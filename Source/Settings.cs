@@ -1,8 +1,28 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 namespace KesslerSymptoms
 {
+    /// <summary>
+    /// One tunable as seen by the config file and the settings tab: a key, a label, and
+    /// string conversions in both directions (the setter validates and clamps).
+    /// </summary>
+    public class SettingDef
+    {
+        public string Key;
+        public string Label;
+        public string Help;
+        /// <summary>Changing this invalidates band geometry, so bands must be rebuilt.</summary>
+        public bool AffectsBands;
+        public Func<string> Get;
+        public Func<string, bool> TrySet;
+        /// <summary>True if the string parses; doesn't change anything.</summary>
+        public Func<string, bool> IsValid;
+        public string Default;
+    }
+
     /// <summary>
     /// All tunable numbers. Loaded from PluginData/settings.cfg; missing keys keep their
     /// defaults, and the file is written out with defaults if it doesn't exist.
@@ -19,6 +39,10 @@ namespace KesslerSymptoms
         /// <summary>Thickness ratio between consecutive bands (1 = uniform, &gt;1 = thicker going up).</summary>
         public static double BandGrowth = 1.35;
 
+        // --- Density ---
+        /// <summary>How much density one orbiting debris vessel contributes.</summary>
+        public static double DebrisWeightMultiplier = 0.25;
+
         // --- Scanning ---
         /// <summary>Real-time seconds between debris rescans.</summary>
         public static float ScanIntervalSeconds = 5f;
@@ -33,6 +57,85 @@ namespace KesslerSymptoms
         public static double Tier1At = 2.0;
         public static double Tier2At = 8.0;
         public static double Tier3At = 20.0;
+
+        /// <summary>Every tunable, in display order. Declared after the fields so defaults capture correctly.</summary>
+        public static readonly List<SettingDef> Defs = new List<SettingDef>
+        {
+            Dbl("DebrisWeightMultiplier", "Debris weight multiplier",
+                "Density one orbiting debris vessel adds to the bands it sweeps",
+                () => DebrisWeightMultiplier, v => DebrisWeightMultiplier = v, 0, 100),
+            Dbl("ExplosionSpike", "Explosion spike",
+                "Density added where a part is destroyed in orbit",
+                () => ExplosionSpike, v => ExplosionSpike = v, 0, 100),
+            Dbl("ExplosionHalfLifeDays", "Spike half-life (days)",
+                "Game days for an explosion spike to fade to half",
+                () => ExplosionHalfLifeDays, v => ExplosionHalfLifeDays = v, 0.01, 100000),
+            Dbl("Tier1At", "Tier 1 at density", "Sparse: micrometeorite pings",
+                () => Tier1At, v => Tier1At = v, 0, 1e6),
+            Dbl("Tier2At", "Tier 2 at density", "Dense: panels and antennas can break",
+                () => Tier2At, v => Tier2At = v, 0, 1e6),
+            Dbl("Tier3At", "Tier 3 at density", "Debris field: large impacts",
+                () => Tier3At, v => Tier3At = v, 0, 1e6),
+            Dbl("ScanIntervalSeconds", "Rescan interval (s)", "Real-time seconds between debris scans",
+                () => ScanIntervalSeconds, v => ScanIntervalSeconds = (float)v, 0.5, 600),
+            Int("BandsPerBody", "Bands per body", "Altitude bands generated around each body",
+                () => BandsPerBody, v => BandsPerBody = v, 1, 64, true),
+            Dbl("CeilingRadii", "Ceiling (body radii)", "Top of the band shell, capped at the SOI",
+                () => CeilingRadii, v => CeilingRadii = v, 1.1, 1000, true),
+            Dbl("BandGrowth", "Band growth", "Thickness ratio between consecutive bands (1 = uniform)",
+                () => BandGrowth, v => BandGrowth = v, 1.0, 5.0, true),
+        };
+
+        private static SettingDef Dbl(string key, string label, string help,
+            Func<double> get, Action<double> set, double min, double max, bool bands = false)
+        {
+            SettingDef d = new SettingDef
+            {
+                Key = key, Label = label, Help = help, AffectsBands = bands,
+                Get = () => get().ToString("G", CultureInfo.InvariantCulture),
+                IsValid = s => { double v; return ParseDouble(s, out v); },
+                TrySet = s =>
+                {
+                    double v;
+                    if (!ParseDouble(s, out v)) return false;
+                    set(Math.Max(min, Math.Min(max, v)));
+                    return true;
+                },
+            };
+            d.Default = d.Get();
+            return d;
+        }
+
+        private static SettingDef Int(string key, string label, string help,
+            Func<int> get, Action<int> set, int min, int max, bool bands = false)
+        {
+            SettingDef d = new SettingDef
+            {
+                Key = key, Label = label, Help = help, AffectsBands = bands,
+                Get = () => get().ToString(CultureInfo.InvariantCulture),
+                IsValid = s => { int v; return ParseInt(s, out v); },
+                TrySet = s =>
+                {
+                    int v;
+                    if (!ParseInt(s, out v)) return false;
+                    set(Math.Max(min, Math.Min(max, v)));
+                    return true;
+                },
+            };
+            d.Default = d.Get();
+            return d;
+        }
+
+        private static bool ParseDouble(string s, out double v)
+        {
+            return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v)
+                && !double.IsNaN(v) && !double.IsInfinity(v);
+        }
+
+        private static bool ParseInt(string s, out int v)
+        {
+            return int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out v);
+        }
 
         public static string FilePath
         {
@@ -56,42 +159,26 @@ namespace KesslerSymptoms
                 return;
             }
 
-            node.TryGetValue("BandsPerBody", ref BandsPerBody);
-            node.TryGetValue("CeilingRadii", ref CeilingRadii);
-            node.TryGetValue("BandGrowth", ref BandGrowth);
-            node.TryGetValue("ScanIntervalSeconds", ref ScanIntervalSeconds);
-            node.TryGetValue("ExplosionSpike", ref ExplosionSpike);
-            node.TryGetValue("ExplosionHalfLifeDays", ref ExplosionHalfLifeDays);
-            node.TryGetValue("Tier1At", ref Tier1At);
-            node.TryGetValue("Tier2At", ref Tier2At);
-            node.TryGetValue("Tier3At", ref Tier3At);
-
-            BandsPerBody = Math.Max(1, BandsPerBody);
-            CeilingRadii = Math.Max(1.1, CeilingRadii);
-            BandGrowth = Math.Max(1.0, BandGrowth);
-            ScanIntervalSeconds = Math.Max(0.5f, ScanIntervalSeconds);
-            ExplosionHalfLifeDays = Math.Max(0.01, ExplosionHalfLifeDays);
-
+            foreach (SettingDef d in Defs)
+            {
+                string s = node.GetValue(d.Key);
+                if (s != null && !d.TrySet(s))
+                    Log.Warn("settings.cfg: bad value '" + s + "' for " + d.Key + "; keeping " + d.Get());
+            }
             Log.Info("Settings loaded");
         }
 
         public static void Save()
         {
             ConfigNode node = new ConfigNode(NodeName);
-            node.AddValue("BandsPerBody", BandsPerBody);
-            node.AddValue("CeilingRadii", CeilingRadii);
-            node.AddValue("BandGrowth", BandGrowth);
-            node.AddValue("ScanIntervalSeconds", ScanIntervalSeconds);
-            node.AddValue("ExplosionSpike", ExplosionSpike);
-            node.AddValue("ExplosionHalfLifeDays", ExplosionHalfLifeDays);
-            node.AddValue("Tier1At", Tier1At);
-            node.AddValue("Tier2At", Tier2At);
-            node.AddValue("Tier3At", Tier3At);
+            foreach (SettingDef d in Defs)
+                node.AddValue(d.Key, d.Get(), d.Help);
 
             ConfigNode root = new ConfigNode();
             root.AddNode(node);
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
             root.Save(FilePath);
+            Log.Info("Settings saved to " + FilePath);
         }
 
         /// <summary>0 = clear, 1..3 = severity tier from idea.md.</summary>

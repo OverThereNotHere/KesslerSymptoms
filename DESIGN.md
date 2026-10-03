@@ -31,7 +31,7 @@ entirely in one band; an eccentric one smears across several. Escape trajectorie
 **Explosion spikes.** A part destroyed while its vessel is orbiting adds `ExplosionSpike`
 to that band, decaying with half-life `ExplosionHalfLifeDays`. Persisted per save.
 
-**Density → tier.** `density = debrisWeight + spikes`, normalised by band volume relative to
+**Density → tier.** `density = debrisWeight × DebrisWeightMultiplier + spikes`, normalised by band volume relative to
 the body's lowest band (so a sparse high shell doesn't read as dense just because it's huge).
 Thresholds `Tier1At / Tier2At / Tier3At` map density to the severity tiers in `idea.md`.
 
@@ -50,6 +50,6 @@ Thresholds `Tier1At / Tier2At / Tier3At` map density to the severity tiers in `i
 |---|---|
 | `Source/` | C# sources; `build.sh` compiles them |
 | `Plugins/KesslerSymptoms.dll` | Build output (git-ignored) |
-| `PluginData/settings.cfg` | Tunables (generated with defaults on first run) |
+| `PluginData/settings.cfg` | Tunables (generated with defaults on first run; editable in the Settings tab) |
 | `Textures/` | Toolbar icons |
 | `noKits.cfg` | MM patch: free repairs |

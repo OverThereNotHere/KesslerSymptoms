@@ -13,6 +13,7 @@ REFS=(
   "$MANAGED/UnityEngine.dll"
   "$MANAGED/UnityEngine.CoreModule.dll"
   "$MANAGED/UnityEngine.IMGUIModule.dll"
+  "$MANAGED/UnityEngine.TextRenderingModule.dll"
   "$MANAGED/UnityEngine.AudioModule.dll"
   "$MANAGED/UnityEngine.PhysicsModule.dll"
   "$MANAGED/UnityEngine.UI.dll"

@@ -108,10 +108,13 @@ namespace KesslerSymptoms
             }
         }
 
-        /// <summary>Volume-normalised density: what the tier thresholds are compared against.</summary>
+        /// <summary>
+        /// Volume-normalised density: what the tier thresholds are compared against.
+        /// Debris weight is scaled by DebrisWeightMultiplier; spikes are already in density units.
+        /// </summary>
         public double Density(int i)
         {
-            return (DebrisWeight[i] + Spike[i]) / relVolume[i];
+            return (DebrisWeight[i] * Settings.DebrisWeightMultiplier + Spike[i]) / relVolume[i];
         }
 
         public double InnerAltitude(int i) { return Inner[i] - Body.Radius; }
