@@ -67,6 +67,14 @@ namespace KesslerSymptoms
         public static double Tier2At = 8.0;
         public static double Tier3At = 20.0;
 
+        // --- Encounters ---
+        /// <summary>Mean hits per game hour for each unit of band density.</summary>
+        public static double HitsPerHourPerDensity = 10.0;
+        /// <summary>Real seconds after an impact alert (alarm + text) before another can play.</summary>
+        public static double AlertCooldownSeconds = 30.0;
+        public static double PingVolume = 1.0;
+        public static double AlarmVolume = 0.7;
+
         /// <summary>Every tunable, in display order. Declared after the fields so defaults capture correctly.</summary>
         public static readonly List<SettingDef> Defs = new List<SettingDef>
         {
@@ -93,6 +101,16 @@ namespace KesslerSymptoms
                 () => Tier2At, v => Tier2At = v, 0, 1e6),
             Dbl("Tier3At", "Tier 3 at density", "Debris field: large impacts",
                 () => Tier3At, v => Tier3At = v, 0, 1e6),
+            Dbl("HitsPerHourPerDensity", "Hits/hour per density",
+                "Average impacts per game hour = this x band density (off rails only)",
+                () => HitsPerHourPerDensity, v => HitsPerHourPerDensity = v, 0, 1e5),
+            Dbl("AlertCooldownSeconds", "Alert cooldown (s)",
+                "Real seconds between impact alarms; hits in between still ping, just without the alarm",
+                () => AlertCooldownSeconds, v => AlertCooldownSeconds = v, 0, 3600),
+            Dbl("PingVolume", "Impact volume", "Volume of impact sounds (x ship volume)",
+                () => PingVolume, v => PingVolume = v, 0, 2),
+            Dbl("AlarmVolume", "Alarm volume", "Volume of the impact alarm (x UI volume)",
+                () => AlarmVolume, v => AlarmVolume = v, 0, 2),
             Dbl("ScanIntervalSeconds", "Rescan interval (s)", "Real-time seconds between debris scans",
                 () => ScanIntervalSeconds, v => ScanIntervalSeconds = (float)v, 0.5, 600),
             Int("BandsPerBody", "Bands per body", "Altitude bands generated around each body",

@@ -16,6 +16,7 @@ REFS=(
   "$MANAGED/UnityEngine.TextRenderingModule.dll"
   "$MANAGED/UnityEngine.AudioModule.dll"
   "$MANAGED/UnityEngine.PhysicsModule.dll"
+  "$MANAGED/UnityEngine.ParticleSystemModule.dll"
   "$MANAGED/UnityEngine.UI.dll"
   "$GAMEDATA/001_ToolbarControl/Plugins/ToolbarControl.dll"
   "$GAMEDATA/000_ClickThroughBlocker/Plugins/ClickThroughBlocker.dll"

@@ -242,6 +242,27 @@ namespace KesslerSymptoms
             GUILayout.Label("Toggles save to settings.cfg immediately. Debris tracking always runs.", helpStyle);
 
             GUILayout.Space(8);
+            GUILayout.Label("Active vessel", headerStyle);
+            if (HighLogic.LoadedScene != GameScenes.FLIGHT)
+            {
+                GUILayout.Label("Not in flight.");
+            }
+            else if (EncounterScheduler.CurrentBand < 0)
+            {
+                GUILayout.Label("Outside all debris bands.");
+            }
+            else
+            {
+                int tier = EncounterScheduler.CurrentTier;
+                GUILayout.Label(string.Format("Band {0}, density {1:F2}, tier {2} ({3})",
+                    EncounterScheduler.CurrentBand, EncounterScheduler.CurrentDensity,
+                    tier, Encounters.TierNames[tier]), tierStyles[tier]);
+                GUILayout.Label(EncounterScheduler.Rolling
+                    ? string.Format("Rolling for impacts: ~{0:F1} per game hour", EncounterScheduler.CurrentHitsPerHour)
+                    : "Not rolling for impacts (clear band, tier disabled, or on rails).");
+            }
+
+            GUILayout.Space(8);
             GUILayout.Label("Force an encounter on the active vessel", headerStyle);
             string blocker = Encounters.Blocker(FlightGlobals.ActiveVessel);
             GUI.enabled = blocker == null;

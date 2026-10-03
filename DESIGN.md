@@ -45,20 +45,22 @@ runs the tier's `IEncounterEffect`. The Effects tab can force any tier for testi
 random (Poisson) with mean `HitsPerHourPerDensity × density` per hour. The hit uses the
 band's current tier. All knobs live in Settings.
 
-### Tier 1: Sparse (spec, decided 2026-10-02)
+### Tier 1: Sparse (implemented)
 
-- **Ping:** sound + brief spark flash at a random point on a random part. No gameplay effect.
-- **Warning:** on entering a band at tier ≥ 1, or when the tier rises while inside one:
-  screen message + alarm sound, once per entry/rise (not per hit).
-- **Sounds:** the user will provide custom sounds in `Sounds/`. Until a file exists, fall
-  back to stock (`Squad/Sounds/sound_click_tick|tock|sharp` for pings, an `Squad/Alarms`
-  sound for the warning). File names to be agreed when the sounds arrive.
+- **Ping:** `litepelt` sound (pitch varied) + streaking sparks + brief light flash at a random
+  point on a random part. No gameplay effect. Tiers 2/3 currently reuse this with the
+  `hardpelt` sounds and bigger sparks as a cosmetic placeholder.
+- **Impact alert:** each encounter shows a text message and plays `alert.wav`, rate-limited by
+  `AlertCooldownSeconds` (forced encounters ignore the cooldown).
+- **Band warning:** text only, when the active vessel's tier rises (entering cluttered space
+  or switching to a vessel inside it). Crossing between same-tier bands stays quiet.
+- **Sounds:** `Sounds/litepelt1-2`, `hardpelt1-2`, `alert` (mono WAV). Stock fallbacks if missing.
 
 ## Milestones
 
 1. ~~Band tracking + debug window~~ done. Debug / Effects / Settings tabs.
 2. Debris lifetime deletion.
-3. Hit scheduler (active vessel, off rails only) + tier 1 effects (pings, sound, warning). ← next
+3. ~~Hit scheduler + tier 1 effects~~ done (pending in-game test).
 4. Tier 2 (stock panel/antenna breakage, rare tank puncture via custom module).
 5. Tier 3 + EVA engineer repair for custom failures.
 
