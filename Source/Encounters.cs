@@ -38,7 +38,7 @@ namespace KesslerSymptoms
 
             string result = "impact on " + part.partInfo.title;
             double impulse = Settings.ImpulseFor(tier);
-            if (impulse > 0 && Push(part, point, -normal, (float)impulse))
+            if (impulse > 0 && !vessel.packed && Push(part, point, -normal, (float)impulse))
                 result += string.Format(", {0:F2} t*m/s push", impulse);
             return result;
         }
@@ -59,7 +59,7 @@ namespace KesslerSymptoms
 
     /// <summary>
     /// Entry point for encounters. Holds one effect per tier and decides whether an encounter
-    /// is allowed. The EncounterScheduler and the Effects tab's force buttons both call Trigger.
+    /// is allowed. Start encounters through EncounterScheduler.Request, which handles time warp.
     /// </summary>
     public static class Encounters
     {
@@ -119,12 +119,27 @@ namespace KesslerSymptoms
             effects[tier] = effect;
         }
 
-        /// <summary>Why an encounter can't happen to this vessel right now, or null if it can.</summary>
+        /// <summary>True while rails (on-rails, non-physics) time warp is running.</summary>
+        public static bool InRailsWarp
+        {
+            get { return TimeWarp.WarpMode == TimeWarp.Modes.HIGH && TimeWarp.CurrentRateIndex > 0; }
+        }
+
+        /// <summary>
+        /// Why an encounter can't happen to this vessel right now, or null if it can. A packed
+        /// (on-rails) vessel is allowed only during rails warp with RailsWarpEncounters on;
+        /// callers must drop out of warp before anything that needs physics (tier 2/3).
+        /// </summary>
         public static string Blocker(Vessel vessel)
         {
             if (HighLogic.LoadedScene != GameScenes.FLIGHT) return "only in flight";
             if (vessel == null) return "no active vessel";
-            if (!vessel.loaded || vessel.packed) return "vessel is on rails";
+            if (!vessel.loaded) return "vessel is unloaded";
+            if (vessel.packed)
+            {
+                if (!InRailsWarp) return "vessel is on rails";
+                if (!Settings.RailsWarpEncounters) return "time warp encounters are off";
+            }
             return null;
         }
 

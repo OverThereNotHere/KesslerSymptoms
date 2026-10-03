@@ -12,7 +12,7 @@ milestone plan. KSP 1.12.5, C# compiled with `mcs` against the local install.
 | Who gets hit | **Active vessel only.** |
 | On rails | **No hits during time warp / on rails** (for now). |
 | Density inputs | Orbiting **debris vessels** + decaying spikes from **recent explosions** (parts destroyed in orbit). |
-| Decay | Debris older than a lifetime is **actually deleted** from the save, low bands first. |
+| Decay | No cap of our own: KSP's Max Persistent Debris is the hard limit. Debris is **deleted** after an altitude-based lifetime with per-piece randomness; warping through long Kessler periods is intended. |
 | Damage | **Reuse stock breakage** (solar panels, antennas, wheels) where it exists; a **small custom PartModule** (MM-patched) for tank leaks, battery shorts, fuel-cell blowouts, RCS failures, engine jams. |
 | Repair | **Engineer on EVA, free** (no kits) — matches `noKits.cfg`. |
 | Hit frequency | **Fully configurable**; ship sane defaults. |
@@ -35,6 +35,16 @@ to that band, decaying with half-life `ExplosionHalfLifeDays`. Persisted per sav
 the body's lowest band (so a sparse high shell doesn't read as dense just because it's huge).
 Thresholds `Tier1At / Tier2At / Tier3At` map density to the severity tiers in `idea.md`.
 
+## Debris decay
+
+Each orbiting debris vessel's age is tracked from when the mod first saw it (persisted per
+save). Its lifetime is `DecayBaseHours × e^(h / (DecayScaleHeightFraction × atmosphereDepth))`,
+where `h` is periapsis height above the atmosphere, times a fixed per-piece factor
+`e^(±DecayRandomness)` seeded from its persistent id. Airless bodies: no drag, never decays.
+Kerbin defaults (Earth calendar): 75 km ~2 weeks, 80 km ~2 months, 90 km ~1.6 y, 100 km ~17 y,
+120 km+ millennia. Only unloaded debris that isn't the active vessel or target is deleted, and
+deletions never count as explosion spikes. The Debug tab shows the lifetime at each band's floor.
+
 ## Encounters
 
 All encounters go through `Encounters.Trigger(vessel, tier, forced)`, which enforces the
@@ -51,6 +61,12 @@ A field lasts `FieldDurationMin..Max` game seconds: real tier hits every ~`Field
 (no per-hit alarm), plus `FieldPeltsPerSecond` sound-only micro pelts (quieter, higher pitch).
 One alarm + text when it starts, text when it passes; it ends silently if the vessel goes on
 rails or you switch vessels. No new encounters roll during a field.
+
+**Time warp.** With `RailsWarpEncounters` on, encounters keep rolling in rails warp (rolled
+over the full warped time). Tier 1 one-offs and fields play out without stopping the warp
+(no push while packed). Tier 2/3 drop you to 1x and land once the vessel is back in physics.
+Rails warp is locked out during a field, except a tier 1 field that arrived mid-warp.
+Fields default to at most 20 s so the lock doesn't drag on (`FieldDurationMax`, adjustable).
 
 **Impulse.** Tier 2/3 hits push the struck part inward at the impact point
 (`Tier2Impulse` / `Tier3Impulse`, tonne·m/s). Tier 1 never pushes.
@@ -69,9 +85,9 @@ rails or you switch vessels. No new encounters roll during a field.
 ## Milestones
 
 1. ~~Band tracking + debug window~~ done. Debug / Effects / Settings tabs.
-2. Debris lifetime deletion.
+2. ~~Debris lifetime deletion~~ done (pending test), plus time warp encounters.
 3. ~~Hit scheduler + tier 1 effects~~ done (pending in-game test).
-4. Tier 2 (stock panel/antenna breakage, rare tank puncture via custom module).
+4. Tier 2 (stock panel/antenna breakage, rare tank puncture via custom module). ← next
 5. Tier 3 + EVA engineer repair for custom failures.
 
 ## Layout

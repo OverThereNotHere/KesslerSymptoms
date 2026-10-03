@@ -32,7 +32,7 @@ namespace KesslerSymptoms
         private ToolbarControl toolbar;
         private bool visible;
         private Tab tab = Tab.Debug;
-        private Rect rect = new Rect(200, 120, 640, 0);
+        private Rect rect = new Rect(200, 120, 720, 0);
         private readonly int windowId = "KesslerSymptoms.Window".GetHashCode();
 
         // Debug tab
@@ -96,7 +96,7 @@ namespace KesslerSymptoms
             if (headerStyle == null) BuildStyles();
 
             rect = ClickThruBlocker.GUILayoutWindow(windowId, rect, DrawWindow, "Kessler Symptoms",
-                GUILayout.Width(640));
+                GUILayout.Width(720));
 
             GUI.skin = oldSkin;
         }
@@ -154,8 +154,8 @@ namespace KesslerSymptoms
             GUILayout.Label(body.bodyName, headerStyle, GUILayout.Width(110));
             if (GUILayout.Button(">", GUILayout.Width(30))) bodyIndex = (bodyIndex + 1) % bodies.Count;
             GUILayout.FlexibleSpace();
-            GUILayout.Label(string.Format("Debris in orbit (all bodies): {0}   Spikes: {1}",
-                scn.LastScanDebrisCount, scn.SpikeCount));
+            GUILayout.Label(string.Format("Debris in orbit: {0}   Spikes: {1}   Decayed (session): {2}",
+                scn.LastScanDebrisCount, scn.SpikeCount, scn.DecayedThisSession));
             GUILayout.EndHorizontal();
 
             int activeBand = -1;
@@ -166,7 +166,7 @@ namespace KesslerSymptoms
             GUILayout.BeginHorizontal();
             Cell("#", 30, headerStyle); Cell("Altitude (km)", 150, headerStyle); Cell("Debris", 60, headerStyle);
             Cell("Weight", 70, headerStyle); Cell("Spike", 70, headerStyle); Cell("Density", 80, headerStyle);
-            Cell("Tier", 40, headerStyle);
+            Cell("Tier", 40, headerStyle); Cell("Lifetime", 80, headerStyle);
             GUILayout.EndHorizontal();
 
             debugScroll = GUILayout.BeginScrollView(debugScroll, GUILayout.Height(280));
@@ -184,6 +184,7 @@ namespace KesslerSymptoms
                 Cell(set.Spike[i].ToString("F2"), 70, style);
                 Cell(density.ToString("F2"), 80, style);
                 Cell(tier.ToString(), 40, style);
+                Cell(Decay.Format(Decay.LifetimeSeconds(body, set.Inner[i])), 80, style);
                 GUILayout.EndHorizontal();
             }
             GUILayout.EndScrollView();
@@ -226,7 +227,7 @@ namespace KesslerSymptoms
 
         private void DrawEffects()
         {
-            GUILayout.Label("Effect toggles", headerStyle);
+            GUILayout.Label("Toggles", headerStyle);
             foreach (SettingDef d in Settings.Defs)
             {
                 if (!d.IsToggle) continue;
@@ -278,8 +279,8 @@ namespace KesslerSymptoms
             GUILayout.Label("One-off", GUILayout.Width(70));
             for (int tier = 1; tier <= 3; tier++)
             {
-                if (GUILayout.Button("Tier " + tier))
-                    Encounters.Trigger(FlightGlobals.ActiveVessel, tier, true);
+                if (GUILayout.Button("Tier " + tier) && sched != null)
+                    sched.Request(tier, false, true);
             }
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
@@ -287,7 +288,7 @@ namespace KesslerSymptoms
             for (int tier = 1; tier <= 3; tier++)
             {
                 if (GUILayout.Button("Tier " + tier) && sched != null)
-                    sched.StartField(tier, true);
+                    sched.Request(tier, true, true);
             }
             GUI.enabled = sched != null && sched.Field != null;
             if (GUILayout.Button("End field", GUILayout.Width(90))) sched.StopField();
@@ -296,7 +297,7 @@ namespace KesslerSymptoms
             GUI.enabled = true;
             GUILayout.Label(blocker != null
                 ? "Unavailable: " + blocker + "."
-                : "Forced encounters ignore the toggles above.", helpStyle);
+                : "Forced encounters ignore the tier toggles. In rails warp, tier 2/3 drop you to 1x first.", helpStyle);
         }
 
         // ---------------------------------------------------------------- Settings tab

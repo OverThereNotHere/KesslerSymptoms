@@ -5,15 +5,23 @@ namespace KesslerSymptoms
 {
     /// <summary>
     /// Flight-scene loop for the active vessel: works out which band it's in, posts a text
-    /// warning when the debris tier rises, and rolls for random encounters while off rails.
-    /// Each encounter is either a one-off impact or, more likely in denser bands, a debris field.
+    /// warning when the debris tier rises, and rolls for random encounters. Each encounter is
+    /// either a one-off impact or, more likely in denser bands, a debris field.
+    ///
+    /// Time warp: with RailsWarpEncounters on, encounters keep rolling during rails warp.
+    /// Tier 1 plays out without stopping the warp; tier 2/3 drop you to 1x first and land once
+    /// the vessel is back in physics. Rails warp is locked out while a field is running.
     /// </summary>
     [KSPAddon(KSPAddon.Startup.Flight, false)]
     public class EncounterScheduler : MonoBehaviour
     {
         private const float CheckInterval = 0.25f;
-        /// <summary>Cap on game time rolled in one check, so a hitch can't produce a burst of hits.</summary>
+        /// <summary>Cap on game time rolled in one check outside warp, so a hitch can't produce a burst.</summary>
         private const double MaxStepSeconds = 5.0;
+        /// <summary>Cap during rails warp (one game day), just to bound absurd frame gaps.</summary>
+        private const double MaxWarpStepSeconds = 86400.0;
+        /// <summary>Real seconds to wait for the vessel to unpack after dropping out of warp.</summary>
+        private const float PendingTimeout = 10f;
 
         private static readonly Color WarningColor = new Color(1f, 0.85f, 0.3f);
 
@@ -30,10 +38,22 @@ namespace KesslerSymptoms
         public DebrisField Field { get; private set; }
         private Vessel fieldVessel;
 
+        /// <summary>A tier 2/3 encounter waiting for the vessel to leave warp and unpack.</summary>
+        private class Pending
+        {
+            public int Tier;
+            public bool IsField;
+            public bool Forced;
+            public Vessel Vessel;
+            public float Expires;
+        }
+        private Pending pending;
+
         private Vessel lastVessel;
         private int lastTier;
         private double lastUT = -1;
         private float nextCheck;
+        private float nextWarpLockMessage;
 
         public void Start()
         {
@@ -52,20 +72,34 @@ namespace KesslerSymptoms
         }
 
         /// <summary>
-        /// Start a debris field on the active vessel, replacing any current one. Forced fields
-        /// (debug buttons) ignore the tier toggles. Returns false if the vessel can't be hit now.
+        /// Start an encounter on the active vessel: the one way in for both the random rolls and
+        /// the debug buttons. Forced encounters ignore the tier toggles. During rails warp a
+        /// tier 2/3 encounter drops out of warp and lands once physics resumes.
+        /// Returns false if the vessel can't be hit now.
         /// </summary>
-        public bool StartField(int tier, bool forced)
+        public bool Request(int tier, bool isField, bool forced)
         {
             Vessel v = FlightGlobals.ActiveVessel;
             if (Encounters.Blocker(v) != null) return false;
             if (!forced && !Settings.TierEnabled(tier)) return false;
 
-            Field = new DebrisField(tier, forced, Planetarium.GetUniversalTime());
-            fieldVessel = v;
-            Encounters.Alert(string.Format("Debris field! Tier {0}: {1}", tier, Encounters.TierNames[tier]), true);
-            Log.Info(string.Format("Tier {0} debris field on {1}{2}, {3:F0} s",
-                tier, v.vesselName, forced ? " (forced)" : "", Field.EndUT - Planetarium.GetUniversalTime()));
+            if (v.packed && tier >= 2)
+            {
+                pending = new Pending
+                {
+                    Tier = tier, IsField = isField, Forced = forced, Vessel = v,
+                    Expires = Time.realtimeSinceStartup + PendingTimeout,
+                };
+                TimeWarp.SetRate(0, true);
+                ScreenMessages.PostScreenMessage(
+                    string.Format("Tier {0} debris ahead: leaving time warp", tier),
+                    3f, ScreenMessageStyle.UPPER_CENTER, WarningColor);
+                Log.Info(string.Format("Tier {0} {1} during warp: dropping out", tier, isField ? "field" : "encounter"));
+                return true;
+            }
+
+            if (isField) StartField(v, tier, forced);
+            else Encounters.Trigger(v, tier, forced);
             return true;
         }
 
@@ -73,6 +107,17 @@ namespace KesslerSymptoms
         public void StopField()
         {
             EndField(false);
+        }
+
+        private void StartField(Vessel v, int tier, bool forced)
+        {
+            // Only a tier 1 field arriving mid-warp leaves the warp alone.
+            bool blocksWarp = !(v.packed && tier == 1);
+            Field = new DebrisField(tier, forced, Planetarium.GetUniversalTime(), blocksWarp);
+            fieldVessel = v;
+            Encounters.Alert(string.Format("Debris field! Tier {0}: {1}", tier, Encounters.TierNames[tier]), true);
+            Log.Info(string.Format("Tier {0} debris field on {1}{2}, {3:F0} s",
+                tier, v.vesselName, forced ? " (forced)" : "", Field.EndUT - Planetarium.GetUniversalTime()));
         }
 
         private void EndField(bool passed)
@@ -85,19 +130,59 @@ namespace KesslerSymptoms
 
         public void Update()
         {
-            // Fields tick every frame so their pelts can come faster than the band check.
-            if (Field != null)
-            {
-                Vessel fv = FlightGlobals.ActiveVessel;
-                if (fv != fieldVessel || Encounters.Blocker(fv) != null)
-                    EndField(false);
-                else if (!Field.Tick(fv, Planetarium.GetUniversalTime()))
-                    EndField(true);
-            }
+            UpdatePending();
+            UpdateField();
 
             if (Time.realtimeSinceStartup < nextCheck) return;
             nextCheck = Time.realtimeSinceStartup + CheckInterval;
+            UpdateRolls();
+        }
 
+        /// <summary>Land a tier 2/3 encounter once its vessel is out of warp and in physics.</summary>
+        private void UpdatePending()
+        {
+            if (pending == null) return;
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (v != pending.Vessel || Time.realtimeSinceStartup > pending.Expires)
+            {
+                pending = null;
+                return;
+            }
+            if (v.packed || Encounters.Blocker(v) != null) return;
+
+            Pending p = pending;
+            pending = null;
+            if (p.IsField) StartField(v, p.Tier, p.Forced);
+            else Encounters.Trigger(v, p.Tier, p.Forced);
+        }
+
+        /// <summary>Tick the field every frame (pelts outpace the band check) and hold off rails warp.</summary>
+        private void UpdateField()
+        {
+            if (Field == null) return;
+
+            if (Field.BlocksWarp && Encounters.InRailsWarp)
+            {
+                TimeWarp.SetRate(0, true);
+                if (Time.realtimeSinceStartup >= nextWarpLockMessage)
+                {
+                    ScreenMessages.PostScreenMessage("Can't time warp inside a debris field",
+                        2f, ScreenMessageStyle.UPPER_CENTER, WarningColor);
+                    nextWarpLockMessage = Time.realtimeSinceStartup + 2f;
+                }
+            }
+
+            // Only a vessel switch or unload ends a field early. Brief packing (e.g. while warp
+            // spins up or down) just pauses its hits; see DebrisField.Tick.
+            Vessel fv = FlightGlobals.ActiveVessel;
+            if (fv == null || fv != fieldVessel || !fv.loaded)
+                EndField(false);
+            else if (!Field.Tick(fv, Planetarium.GetUniversalTime()))
+                EndField(true);
+        }
+
+        private void UpdateRolls()
+        {
             KesslerScenario scn = KesslerScenario.Instance;
             Vessel v = FlightGlobals.ActiveVessel;
             if (scn == null || v == null)
@@ -135,7 +220,7 @@ namespace KesslerSymptoms
             }
             lastTier = tier;
 
-            // Impact rolls: Poisson arrivals over the game time since the last check.
+            // Encounter rolls: Poisson arrivals over the game time since the last check.
             Rolling = tier >= 1 && Settings.TierEnabled(tier) && Encounters.Blocker(v) == null;
             double ut = Planetarium.GetUniversalTime();
             if (!Rolling || lastUT < 0)
@@ -143,17 +228,14 @@ namespace KesslerSymptoms
                 lastUT = Rolling ? ut : -1;
                 return;
             }
-            double dt = Math.Min(ut - lastUT, MaxStepSeconds);
+            double dt = Math.Min(ut - lastUT, v.packed ? MaxWarpStepSeconds : MaxStepSeconds);
             lastUT = ut;
-            if (Field != null) return; // one encounter at a time
+            if (Field != null || pending != null) return; // one encounter at a time
 
             double perSecond = CurrentHitsPerHour / 3600.0;
             if (UnityEngine.Random.value >= 1.0 - Math.Exp(-perSecond * dt)) return;
 
-            if (UnityEngine.Random.value < Settings.FieldChance(density))
-                StartField(tier, false);
-            else
-                Encounters.Trigger(v, tier, false);
+            Request(tier, UnityEngine.Random.value < Settings.FieldChance(density), false);
         }
     }
 }

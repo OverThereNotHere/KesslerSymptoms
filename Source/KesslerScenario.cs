@@ -20,8 +20,9 @@ namespace KesslerSymptoms
     }
 
     /// <summary>
-    /// Per-save hub: owns the band sets, rescans debris periodically, records explosion
-    /// spikes and persists them.
+    /// Per-save hub: owns the band sets, rescans debris periodically, deletes debris that has
+    /// outlived its orbital lifetime, records explosion spikes, and persists spikes plus when
+    /// each piece of debris was first seen.
     /// </summary>
     [KSPScenario(ScenarioCreationOptions.AddToAllGames,
         GameScenes.FLIGHT, GameScenes.TRACKSTATION, GameScenes.SPACECENTER)]
@@ -36,11 +37,17 @@ namespace KesslerSymptoms
 
         private readonly Dictionary<string, BandSet> bands = new Dictionary<string, BandSet>();
         private readonly List<ExplosionSpike> spikes = new List<ExplosionSpike>();
+        /// <summary>Debris persistentId → UT it was first seen; its age for decay.</summary>
+        private readonly Dictionary<uint, double> firstSeen = new Dictionary<uint, double>();
+        private readonly List<Vessel> expired = new List<Vessel>();
+        /// <summary>Set while we delete debris, so its destruction doesn't count as an explosion.</summary>
+        private bool deleting;
         private float nextScan;
 
         public double LastScanUT { get; private set; }
         public int LastScanDebrisCount { get; private set; }
         public int SpikeCount { get { return spikes.Count; } }
+        public int DecayedThisSession { get; private set; }
 
         public override void OnAwake()
         {
@@ -95,6 +102,7 @@ namespace KesslerSymptoms
             }
 
             int debris = 0;
+            expired.Clear();
             foreach (Vessel v in FlightGlobals.Vessels)
             {
                 if (v == null || v.vesselType != VesselType.Debris) continue;
@@ -102,9 +110,23 @@ namespace KesslerSymptoms
                 Orbit o = v.orbit;
                 if (o == null || o.referenceBody == null || o.eccentricity >= 1.0) continue;
 
+                double seen;
+                if (!firstSeen.TryGetValue(v.persistentId, out seen))
+                {
+                    seen = now;
+                    firstSeen[v.persistentId] = now;
+                }
+                if (Settings.DebrisDecayEnabled && CanDelete(v) &&
+                    now - seen > Decay.LifetimeSeconds(o.referenceBody, o.PeR) * Decay.RandomFactor(v.persistentId))
+                {
+                    expired.Add(v);
+                    continue;
+                }
+
                 GetBands(o.referenceBody).AddOrbit(o.PeR, o.ApR, 1.0);
                 debris++;
             }
+            DeleteExpired(now);
 
             double halfLife = Settings.ExplosionHalfLifeDays * KSPUtil.dateTimeFormatter.Day;
             spikes.RemoveAll(s => s.ValueAt(now, halfLife) < SpikePruneBelow);
@@ -119,6 +141,40 @@ namespace KesslerSymptoms
 
             LastScanUT = now;
             LastScanDebrisCount = debris;
+        }
+
+        /// <summary>
+        /// Only debris the player can't see go: unloaded (not near the active vessel), and not
+        /// the active vessel or the current target.
+        /// </summary>
+        private static bool CanDelete(Vessel v)
+        {
+            if (v.loaded || v == FlightGlobals.ActiveVessel) return false;
+            ITargetable target = FlightGlobals.fetch != null ? FlightGlobals.fetch.VesselTarget : null;
+            return target == null || target.GetVessel() != v;
+        }
+
+        private void DeleteExpired(double now)
+        {
+            if (expired.Count == 0) return;
+            deleting = true;
+            try
+            {
+                foreach (Vessel v in expired)
+                {
+                    double seen = firstSeen[v.persistentId];
+                    Log.Info(string.Format("Debris '{0}' around {1} decayed after {2} (Pe {3:N0} m)",
+                        v.vesselName, v.mainBody.bodyName, Decay.Format(now - seen), v.orbit.PeA));
+                    firstSeen.Remove(v.persistentId);
+                    v.Die();
+                    DecayedThisSession++;
+                }
+            }
+            finally
+            {
+                deleting = false;
+                expired.Clear();
+            }
         }
 
         public void AddSpike(CelestialBody body, double radius, double magnitude)
@@ -160,6 +216,7 @@ namespace KesslerSymptoms
 
         private void OnPartDie(Part p)
         {
+            if (deleting) return;
             Vessel v = p != null ? p.vessel : null;
             if (v == null || v.situation != Vessel.Situations.ORBITING) return;
 
@@ -180,6 +237,15 @@ namespace KesslerSymptoms
                 n.AddValue("magnitude", s.Magnitude);
                 n.AddValue("ut", s.UT);
             }
+
+            // First-seen times, only for debris that still exists.
+            HashSet<uint> alive = new HashSet<uint>();
+            foreach (Vessel v in FlightGlobals.Vessels)
+                if (v != null) alive.Add(v.persistentId);
+            ConfigNode ages = node.AddNode("DEBRIS_SEEN");
+            foreach (KeyValuePair<uint, double> kv in firstSeen)
+                if (alive.Contains(kv.Key))
+                    ages.AddValue("v", kv.Key + " " + kv.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
         }
 
         public override void OnLoad(ConfigNode node)
@@ -195,7 +261,23 @@ namespace KesslerSymptoms
                 n.TryGetValue("ut", ref s.UT);
                 spikes.Add(s);
             }
-            nextScan = 0f; // rescan on the next frame with the loaded spikes
+            firstSeen.Clear();
+            ConfigNode ages = node.GetNode("DEBRIS_SEEN");
+            if (ages != null)
+            {
+                foreach (string entry in ages.GetValues("v"))
+                {
+                    string[] parts = entry.Split(' ');
+                    uint id;
+                    double ut;
+                    if (parts.Length == 2 && uint.TryParse(parts[0], out id) &&
+                        double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out ut))
+                        firstSeen[id] = ut;
+                }
+            }
+
+            nextScan = 0f; // rescan on the next frame with the loaded state
         }
     }
 }

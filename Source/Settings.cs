@@ -39,6 +39,18 @@ namespace KesslerSymptoms
         public static bool Tier1Enabled = true;
         public static bool Tier2Enabled = true;
         public static bool Tier3Enabled = true;
+        /// <summary>Encounters keep happening during rails time warp (tier 2/3 drop you out of it).</summary>
+        public static bool RailsWarpEncounters = true;
+        /// <summary>Old debris is deleted after an altitude-based lifetime.</summary>
+        public static bool DebrisDecayEnabled = true;
+
+        // --- Debris decay ---
+        /// <summary>Lifetime (game hours) of debris with periapsis right at the top of the atmosphere.</summary>
+        public static double DecayBaseHours = 120.0;
+        /// <summary>Lifetime multiplies by e for every (this × atmosphere depth) of periapsis height.</summary>
+        public static double DecayScaleHeightFraction = 0.06;
+        /// <summary>Per-debris spread: lifetime × e^(±this), fixed for each piece.</summary>
+        public static double DecayRandomness = 0.5;
 
         // --- Bands ---
         /// <summary>Bands generated per body between minOrbitalDistance and the ceiling.</summary>
@@ -82,7 +94,7 @@ namespace KesslerSymptoms
         /// <summary>Field chance = FieldChanceMax × density / (density + FieldHalfDensity).</summary>
         public static double FieldChanceMax = 0.6;
         public static double FieldHalfDensity = 10.0;
-        /// <summary>Field length range, in game seconds.</summary>
+        /// <summary>Field length range, in game seconds. Fields block rails warp, so keep them short.</summary>
         public static double FieldDurationMin = 8.0;
         public static double FieldDurationMax = 20.0;
         /// <summary>Mean game seconds between real tier hits inside a field.</summary>
@@ -103,6 +115,12 @@ namespace KesslerSymptoms
                 () => Tier2Enabled, v => Tier2Enabled = v),
             Bool("Tier3Enabled", "Tier 3: Debris field", "Large impacts: leaks, shorts, engine jams",
                 () => Tier3Enabled, v => Tier3Enabled = v),
+            Bool("RailsWarpEncounters", "Encounters during time warp",
+                "Roll encounters in rails warp; tier 1 keeps warping, tier 2/3 drop you to 1x",
+                () => RailsWarpEncounters, v => RailsWarpEncounters = v),
+            Bool("DebrisDecayEnabled", "Debris decay",
+                "Delete old debris after a lifetime based on periapsis height (never on airless bodies)",
+                () => DebrisDecayEnabled, v => DebrisDecayEnabled = v),
             Dbl("DebrisWeightMultiplier", "Debris weight multiplier",
                 "Density one orbiting debris vessel adds to the bands it sweeps",
                 () => DebrisWeightMultiplier, v => DebrisWeightMultiplier = v, 0, 100),
@@ -138,7 +156,7 @@ namespace KesslerSymptoms
                 () => FieldHalfDensity, v => FieldHalfDensity = v, 0.01, 1e6),
             Dbl("FieldDurationMin", "Field min length (s)", "Shortest debris field, game seconds",
                 () => FieldDurationMin, v => FieldDurationMin = v, 1, 3600),
-            Dbl("FieldDurationMax", "Field max length (s)", "Longest debris field, game seconds",
+            Dbl("FieldDurationMax", "Field max length (s)", "Longest debris field, game seconds (rails warp is locked during fields)",
                 () => FieldDurationMax, v => FieldDurationMax = v, 1, 3600),
             Dbl("FieldSecondsPerHit", "Field s per hit", "Average game seconds between real hits in a field",
                 () => FieldSecondsPerHit, v => FieldSecondsPerHit = v, 0.1, 600),
@@ -146,6 +164,14 @@ namespace KesslerSymptoms
                 () => FieldPeltsPerSecond, v => FieldPeltsPerSecond = v, 0, 50),
             Dbl("PeltVolume", "Pelt volume", "Micro pelt volume as a fraction of impact volume",
                 () => PeltVolume, v => PeltVolume = v, 0, 2),
+            Dbl("DecayBaseHours", "Decay base (hours)",
+                "Game hours debris lasts with periapsis at the top of the atmosphere",
+                () => DecayBaseHours, v => DecayBaseHours = v, 0.01, 1e9),
+            Dbl("DecayScaleHeightFraction", "Decay scale height",
+                "Lifetime x e for every (this x atmosphere depth) of periapsis height",
+                () => DecayScaleHeightFraction, v => DecayScaleHeightFraction = v, 0.001, 10),
+            Dbl("DecayRandomness", "Decay randomness", "Each piece's lifetime is scaled by e^(+/- this)",
+                () => DecayRandomness, v => DecayRandomness = v, 0, 5),
             Dbl("ScanIntervalSeconds", "Rescan interval (s)", "Real-time seconds between debris scans",
                 () => ScanIntervalSeconds, v => ScanIntervalSeconds = (float)v, 0.5, 600),
             Int("BandsPerBody", "Bands per body", "Altitude bands generated around each body",

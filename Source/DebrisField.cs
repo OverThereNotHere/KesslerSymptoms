@@ -15,14 +15,20 @@ namespace KesslerSymptoms
         public readonly int Tier;
         public readonly bool Forced;
         public readonly double EndUT;
+        /// <summary>
+        /// Whether rails warp is locked out while this field runs. A tier 1 field that arrives
+        /// mid-warp doesn't stop the warp, so it doesn't lock it either.
+        /// </summary>
+        public readonly bool BlocksWarp;
 
         private double nextHitUT;
         private double nextPeltUT;
 
-        public DebrisField(int tier, bool forced, double now)
+        public DebrisField(int tier, bool forced, double now, bool blocksWarp)
         {
             Tier = tier;
             Forced = forced;
+            BlocksWarp = blocksWarp;
             double min = Math.Min(Settings.FieldDurationMin, Settings.FieldDurationMax);
             double max = Math.Max(Settings.FieldDurationMin, Settings.FieldDurationMax);
             EndUT = now + min + UnityEngine.Random.value * (max - min);
@@ -42,10 +48,19 @@ namespace KesslerSymptoms
             return -mean * Math.Log(Math.Max(1e-6, 1.0 - UnityEngine.Random.value));
         }
 
-        /// <summary>Advance to <paramref name="now"/>. Returns false once the field has passed.</summary>
+        /// <summary>
+        /// Advance to <paramref name="now"/>. Returns false once the field has passed. While the
+        /// vessel can't be hit (e.g. packed as warp spins up or down) the clock runs but nothing lands.
+        /// </summary>
         public bool Tick(Vessel vessel, double now)
         {
             if (now >= EndUT) return false;
+            if (Encounters.Blocker(vessel) != null)
+            {
+                nextHitUT = Math.Max(nextHitUT, now);
+                nextPeltUT = Math.Max(nextPeltUT, now);
+                return true;
+            }
 
             for (int n = 0; now >= nextHitUT && n < MaxHitsPerTick; n++)
             {
