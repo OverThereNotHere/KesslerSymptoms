@@ -7,8 +7,9 @@ namespace KesslerSymptoms
 {
     /// <summary>
     /// Debris damage state for one part, added by an MM patch to every part with deployables or
-    /// resources. Holds a self-sealing tank puncture (persisted in the save) and makes stock
-    /// deployable repair free (no kits; stock's engineer check still applies).
+    /// resources. Holds a self-sealing tank puncture (persisted in the save) and replaces stock's
+    /// deployable Repair with a free one (same skill rule, no kits). Stock's own button can't be
+    /// made free: it counts carried kits as -1 when you have none, so even "0 kits" fails.
     ///
     /// Leak model: rate(t) = rate0 × e^-(t - start)/tau, as a fraction of each leakable resource's
     /// capacity per second. Drain over any interval has a closed form, so time warp and time
@@ -22,6 +23,10 @@ namespace KesslerSymptoms
 
         private static readonly FieldInfo RepairKitsField = typeof(ModuleDeployablePart)
             .GetField("repairKitsNecessary", BindingFlags.Instance | BindingFlags.NonPublic);
+        /// <summary>Stock's repair itself (protected virtual, so subclasses' versions still run).</summary>
+        private static readonly MethodInfo DoRepairMethod = typeof(ModuleDeployablePart)
+            .GetMethod("DoRepair", BindingFlags.Instance | BindingFlags.NonPublic);
+        private const string StockRepairEvent = "EventRepairExternal";
 
         [KSPField(isPersistant = true)] public bool leaking;
         [KSPField(isPersistant = true)] public double leakStartUT;
@@ -158,9 +163,15 @@ namespace KesslerSymptoms
             UpdateUI();
         }
 
-        /// <summary>Keep the leak's visuals and sound in step with its current rate.</summary>
+        /// <summary>
+        /// Show our Repair instead of stock's on broken deployables, and keep the leak's visuals
+        /// and sound in step with its current rate. Runs after stock's module (we're added later),
+        /// so stock re-enabling its button each frame is overridden.
+        /// </summary>
         public void Update()
         {
+            if (HighLogic.LoadedSceneIsFlight) UpdateRepairButtons();
+
             if (!leaking || !HighLogic.LoadedSceneIsFlight)
             {
                 if (fx != null) DestroyFx();
@@ -185,22 +196,62 @@ namespace KesslerSymptoms
             fx = null;
         }
 
+        /// <summary>
+        /// Stock's repair rule, minus the kits: the active vessel must be a kerbal on EVA with
+        /// repair skill (an Engineer). Posts stock's own refusal message if not.
+        /// </summary>
+        private static bool EvaCanRepair()
+        {
+            Vessel eva = FlightGlobals.ActiveVessel;
+            if (eva == null || !eva.isEVA) return false;
+            if (eva.VesselValues.RepairSkill.value >= 1) return true;
+
+            Game game = HighLogic.CurrentGame;
+            bool experience = game != null &&
+                game.Parameters.CustomParams<GameParameters.AdvancedParams>().KerbalExperienceEnabled(game.Mode);
+            ScreenMessages.PostScreenMessage(experience
+                ? Localizer.Format("#autoLOC_246904", 1.ToString())
+                : Localizer.Format("#autoLOC_6006098"));
+            return false;
+        }
+
+        private void UpdateRepairButtons()
+        {
+            bool anyBroken = false;
+            foreach (ModuleDeployablePart dp in part.FindModulesImplementing<ModuleDeployablePart>())
+            {
+                if (dp.deployState != ModuleDeployablePart.DeployState.BROKEN) continue;
+                anyBroken = true;
+                BaseEvent stock = dp.Events[StockRepairEvent];
+                if (stock != null && DoRepairMethod != null)
+                {
+                    stock.active = false;
+                    stock.guiActiveUnfocused = false;
+                }
+            }
+            // If reflection failed, leave stock's button alone rather than offer a dead one.
+            Events["RepairDeployable"].active = anyBroken && DoRepairMethod != null;
+        }
+
+        [KSPEvent(guiName = "Repair", guiActive = false, guiActiveUnfocused = true,
+            externalToEVAOnly = true, unfocusedRange = 4f, active = false)]
+        public void RepairDeployable()
+        {
+            if (!EvaCanRepair()) return;
+            foreach (ModuleDeployablePart dp in part.FindModulesImplementing<ModuleDeployablePart>())
+            {
+                if (dp.deployState != ModuleDeployablePart.DeployState.BROKEN) continue;
+                DoRepairMethod.Invoke(dp, null);
+                Log.Info("Repaired " + part.partInfo.title);
+            }
+            ScreenMessages.PostScreenMessage(part.partInfo.title + " repaired", 4f, ScreenMessageStyle.UPPER_CENTER);
+        }
+
         [KSPEvent(guiName = "Patch leak", guiActive = false, guiActiveUnfocused = true,
             externalToEVAOnly = true, unfocusedRange = 4f, active = false)]
         public void PatchLeak()
         {
-            // Same rule as stock deployable repair: with Kerbal experience on, the EVA kerbal
-            // needs repair skill (an Engineer).
-            Vessel eva = FlightGlobals.ActiveVessel;
-            if (eva == null || !eva.isEVA) return;
-            Game game = HighLogic.CurrentGame;
-            if (game != null &&
-                game.Parameters.CustomParams<GameParameters.AdvancedParams>().KerbalExperienceEnabled(game.Mode) &&
-                eva.VesselValues.RepairSkill.value < 1)
-            {
-                ScreenMessages.PostScreenMessage(Localizer.Format("#autoLOC_246904", 1.ToString()));
-                return;
-            }
+            if (!EvaCanRepair()) return;
 
             FixedUpdate(); // settle the drain up to now first
             if (!leaking) return;
