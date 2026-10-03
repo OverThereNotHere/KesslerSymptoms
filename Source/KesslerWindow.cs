@@ -47,6 +47,7 @@ namespace KesslerSymptoms
         private Vector2 settingsScroll;
         private string status = "";
         private string hoverHelp = "";
+        private string damageStatus = "";
 
         // Styles are built from HighLogic.Skin on first OnGUI (they can't be made outside it).
         private GUIStyle headerStyle, cellStyle, badFieldStyle, changedLabelStyle, helpStyle;
@@ -294,6 +295,14 @@ namespace KesslerSymptoms
             if (GUILayout.Button("End field", GUILayout.Width(90))) sched.StopField();
             GUI.enabled = blocker == null;
             GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Damage", GUILayout.Width(70));
+            if (GUILayout.Button("Break a panel/antenna"))
+                damageStatus = Damage.ForceBreak(FlightGlobals.ActiveVessel);
+            if (GUILayout.Button("Puncture a tank"))
+                damageStatus = Damage.ForcePuncture(FlightGlobals.ActiveVessel);
+            GUILayout.EndHorizontal();
+            if (damageStatus.Length > 0) GUILayout.Label(damageStatus, helpStyle);
             GUI.enabled = true;
             GUILayout.Label(blocker != null
                 ? "Unavailable: " + blocker + "."

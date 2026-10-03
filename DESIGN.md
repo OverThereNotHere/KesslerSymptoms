@@ -82,7 +82,7 @@ Fields default to at most 20 s so the lock doesn't drag on (`FieldDurationMax`, 
   or switching to a vessel inside it). Crossing between same-tier bands stays quiet.
 - **Sounds:** `Sounds/litepelt1-2`, `hardpelt1-2`, `alert` (mono WAV). Stock fallbacks if missing.
 
-### Tier 2: Dense (spec, decided 2026-10-02)
+### Tier 2: Dense (implemented, pending test)
 
 Damage lands on **the part that got hit** (the same random part the sparks hit), with a
 per-part-type chance. Every real hit can damage, including each hit inside a field.
@@ -97,16 +97,24 @@ Tier 2/3 already push the part and drop you out of warp.
   - **Self-sealing:** leak rate starts at a random fraction of capacity per minute and decays
     exponentially (`LeakRateMin..Max` %/min, `LeakSealHalfLifeMinutes`), so total loss is
     bounded (default ~5–20%).
-  - **Tiny thrust** at the hole, opposite the leak direction, scaled by mass flow.
+  - **Thrust** at the hole, opposite the vent direction: mass flow x `LeakVentSpeed` (800 m/s),
+    so a ~1%/min leak pushes gently and a ~4%/min leak noticeably more, fading as it seals.
+  - **Effects:** vapour jet out of the hole plus a looping hiss (`leak1/2` for leaks starting
+    under 2%/min, `leak3` above), both scaled by the current rate.
+  - Damage alerts play `partalarm` (trimmed to one 2.75 s cycle, -8 dB), not the impact alert.
   - Computed in closed form from UT, so it's correct through warp and across unload/reload.
 - **Notification:** screen message naming the part, the part glows red for a few seconds,
   and the alarm plays (ignoring the cooldown). Dropping out of warp already happens for tier 2.
-- **Repair:** Engineer on EVA, free (no kits). Our module offers *Repair* for broken
-  deployables (bypassing stock's kit requirement) and *Patch leak* for punctures. Note:
-  `noKits.cfg` sets `repairKitsRequired`, which no stock module reads (the real field is
-  internal), so free repair has to be done in code.
-- **Persistence:** a custom PartModule (`ModuleKesslerDamage`, added by an MM patch to parts
-  with deployables or leakable resources) stores leak state in the save.
+- **Repair:** free, with stock's own skill rule: if Kerbal experience is on in difficulty
+  settings, the EVA kerbal needs repair skill >= 1 (an Engineer); otherwise anyone can.
+  Broken deployables use stock's *Repair* button; `ModuleKesslerDamage` zeroes the internal
+  `repairKitsNecessary` after stock's OnStart sets it (mass-based, capped by KSP's
+  `PART_REPAIR_MAX_KIT_AMOUNT`). Leaks get our *Patch leak* EVA action with the same skill rule.
+  `noKits.cfg` sets `repairKitsRequired`, which no stock module reads, so it has no effect.
+- **Persistence:** `ModuleKesslerDamage` (added by `KesslerDamage.cfg`, an MM `:FINAL` patch,
+  to every part with a deployable or any resource) stores leak state in the save.
+- **Tier 3** uses tier 2's damage chances until it gets its own spec.
+- **Debug:** Effects tab has *Break a panel/antenna* and *Puncture a tank* buttons.
 
 ## Milestones
 

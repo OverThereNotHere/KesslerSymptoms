@@ -12,7 +12,8 @@ namespace KesslerSymptoms
 
     /// <summary>
     /// Impact: sound + sparks + flash at a random spot on a random part, plus a push into the
-    /// surface for tiers with an impulse set (tier 1 has none). Tiers 2 and 3 get real damage later.
+    /// surface for tiers with an impulse set (tier 1 has none), and a damage roll on that part
+    /// for tier 2+ (see Damage).
     /// </summary>
     public class ImpactEffect : IEncounterEffect
     {
@@ -40,6 +41,8 @@ namespace KesslerSymptoms
             double impulse = Settings.ImpulseFor(tier);
             if (impulse > 0 && !vessel.packed && Push(part, point, -normal, (float)impulse))
                 result += string.Format(", {0:F2} t*m/s push", impulse);
+            string damage = Damage.TryDamage(part, point, normal, tier);
+            if (damage != null) result += ", " + damage;
             return result;
         }
 
@@ -71,15 +74,13 @@ namespace KesslerSymptoms
         private static readonly Dictionary<int, IEncounterEffect> effects = new Dictionary<int, IEncounterEffect>
         {
             { 1, new ImpactEffect(Sfx.LightImpacts, 1f) },
-            // Tiers 2/3: heavier visuals plus a push; part damage comes later.
+            // Tiers 2/3: heavier visuals, a push, and damage rolls. Tier 3 uses tier 2's
+            // damage chances until it gets its own.
             { 2, new ImpactEffect(Sfx.HardImpacts, 1.6f) },
             { 3, new ImpactEffect(Sfx.HardImpacts, 2.2f) },
         };
 
-        /// <summary>
-        /// Random part, then a random point on its surface: cast a ray at one of its colliders
-        /// from a random direction outside it. Falls back to the part's origin.
-        /// </summary>
+        /// <summary>Random part, then a random point on its surface (see PickSurfacePoint).</summary>
         public static bool PickImpactPoint(Vessel vessel, out Part part, out Vector3 point, out Vector3 normal)
         {
             part = null;
@@ -87,6 +88,16 @@ namespace KesslerSymptoms
             if (vessel.parts.Count == 0) return false;
 
             part = vessel.parts[Random.Range(0, vessel.parts.Count)];
+            PickSurfacePoint(part, out point, out normal);
+            return true;
+        }
+
+        /// <summary>
+        /// Random point on a part's surface: cast a ray at one of its colliders from a random
+        /// direction outside it. Falls back to the part's origin.
+        /// </summary>
+        public static void PickSurfacePoint(Part part, out Vector3 point, out Vector3 normal)
+        {
             List<Collider> colliders = new List<Collider>();
             foreach (Collider c in part.GetComponentsInChildren<Collider>())
                 if (c.enabled && !c.isTrigger) colliders.Add(c);
@@ -104,14 +115,13 @@ namespace KesslerSymptoms
                     {
                         point = hit.point;
                         normal = hit.normal;
-                        return true;
+                        return;
                     }
                 }
             }
 
             point = part.transform.position;
             normal = Random.onUnitSphere;
-            return true;
         }
 
         public static void Register(int tier, IEncounterEffect effect)
@@ -198,6 +208,12 @@ namespace KesslerSymptoms
         public static void PlayAlarm()
         {
             Sfx.Play2D(Sfx.Get(Sfx.Alarm, Sfx.AlarmFallback), (float)Settings.AlarmVolume);
+        }
+
+        /// <summary>The damage alarm: something on the ship just broke or started leaking.</summary>
+        public static void PlayPartAlarm()
+        {
+            Sfx.Play2D(Sfx.Get(Sfx.PartAlarm, Sfx.Alarm), (float)Settings.AlarmVolume);
         }
     }
 }

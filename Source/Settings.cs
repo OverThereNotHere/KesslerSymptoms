@@ -90,6 +90,19 @@ namespace KesslerSymptoms
         public static double Tier2Impulse = 0.1;
         public static double Tier3Impulse = 0.5;
 
+        // --- Tier 2 damage ---
+        /// <summary>Chance a tier 2+ hit on a panel/antenna/radiator breaks it.</summary>
+        public static double Tier2BreakChance = 0.35;
+        /// <summary>Chance a tier 2+ hit on a tank with leakable contents punctures it.</summary>
+        public static double Tier2PunctureChance = 0.05;
+        /// <summary>Initial leak rate range, percent of capacity per minute.</summary>
+        public static double LeakRateMinPctPerMin = 1.0;
+        public static double LeakRateMaxPctPerMin = 4.0;
+        /// <summary>Leak rate halves every this many game minutes (self-sealing).</summary>
+        public static double LeakSealHalfLifeMinutes = 4.0;
+        /// <summary>Exhaust speed (m/s) of venting gas; thrust = mass flow × this.</summary>
+        public static double LeakVentSpeed = 800.0;
+
         // --- Debris fields ---
         /// <summary>Field chance = FieldChanceMax × density / (density + FieldHalfDensity).</summary>
         public static double FieldChanceMax = 0.6;
@@ -150,6 +163,21 @@ namespace KesslerSymptoms
                 () => Tier2Impulse, v => Tier2Impulse = v, 0, 1000),
             Dbl("Tier3Impulse", "Tier 3 impulse", "Push (tonne m/s) a tier 3 hit gives the part it strikes",
                 () => Tier3Impulse, v => Tier3Impulse = v, 0, 1000),
+            Dbl("Tier2BreakChance", "Break chance (tier 2)",
+                "Chance (0-1) a tier 2+ hit on a panel, antenna or radiator breaks it",
+                () => Tier2BreakChance, v => Tier2BreakChance = v, 0, 1),
+            Dbl("Tier2PunctureChance", "Puncture chance (tier 2)",
+                "Chance (0-1) a tier 2+ hit on a tank with fuel/gas punctures it",
+                () => Tier2PunctureChance, v => Tier2PunctureChance = v, 0, 1),
+            Dbl("LeakRateMinPctPerMin", "Leak rate min (%/min)", "Slowest starting leak, percent of the tank per minute",
+                () => LeakRateMinPctPerMin, v => LeakRateMinPctPerMin = v, 0, 100),
+            Dbl("LeakRateMaxPctPerMin", "Leak rate max (%/min)", "Fastest starting leak, percent of the tank per minute",
+                () => LeakRateMaxPctPerMin, v => LeakRateMaxPctPerMin = v, 0, 100),
+            Dbl("LeakSealHalfLifeMinutes", "Leak seal half-life (min)",
+                "Game minutes for a leak to slow to half; total loss = rate x half-life x 1.44",
+                () => LeakSealHalfLifeMinutes, v => LeakSealHalfLifeMinutes = v, 0.01, 1e5),
+            Dbl("LeakVentSpeed", "Leak vent speed (m/s)", "Thrust from a leak = mass flow x this",
+                () => LeakVentSpeed, v => LeakVentSpeed = v, 0, 5000),
             Dbl("FieldChanceMax", "Field chance max", "Highest chance (0-1) that an encounter is a debris field",
                 () => FieldChanceMax, v => FieldChanceMax = v, 0, 1),
             Dbl("FieldHalfDensity", "Field half density", "Density at which field chance reaches half its max",

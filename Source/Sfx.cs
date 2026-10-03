@@ -24,6 +24,14 @@ namespace KesslerSymptoms
             "Squad/Sounds/sound_click_tick",
             "Squad/Sounds/sound_click_tock",
         };
+        public static readonly string[] SmallLeaks =
+        {
+            "KesslerSymptoms/Sounds/leak1",
+            "KesslerSymptoms/Sounds/leak2",
+        };
+        public const string BigLeak = "KesslerSymptoms/Sounds/leak3";
+        /// <summary>Alarm for a part actually being damaged (distinct from the impact alert).</summary>
+        public const string PartAlarm = "KesslerSymptoms/Sounds/partalarm";
         public const string Alarm = "KesslerSymptoms/Sounds/alert";
         public const string AlarmFallback = "Squad/Alarms/Sounds/ComputerShort";
 
