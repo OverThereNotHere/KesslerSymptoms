@@ -38,6 +38,7 @@ namespace KesslerSymptoms
                 return "no part to hit";
 
             ImpactFx.Spawn(part, point, normal, scale);
+            if (tier >= 3) ImpactFx.SpawnFragments(part, point, normal);
             ImpactMark.Spawn(part, surface, point, normal, scale);
             Sfx.PlayAt(Sfx.Pick(sounds, Sfx.ImpactFallback), part.transform, point,
                 (float)Settings.PingVolume, Random.Range(0.9f, 1.15f), Sfx.ImpactMuffleHz);

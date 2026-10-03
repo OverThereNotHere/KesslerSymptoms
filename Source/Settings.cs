@@ -121,6 +121,39 @@ namespace KesslerSymptoms
         public static double LeakSealHalfLifeMinutes = 4.0;
         /// <summary>Exhaust speed (m/s) of venting gas; thrust = mass flow × this.</summary>
         public static double LeakVentSpeed = 800.0;
+        /// <summary>Tier 2 partial battery short: chance, and the fraction of current charge it loses.</summary>
+        public static double Tier2ShortChance = 0.2;
+        public static double Tier2ShortMinLoss = 0.3;
+        public static double Tier2ShortMaxLoss = 0.6;
+        /// <summary>Tier 2 fixed panel damage: chance, and output lost per hit (gentler than tier 3).</summary>
+        public static double Tier2SolarChance = 0.2;
+        public static double Tier2SolarLossPerHit = 0.05;
+        /// <summary>Tier 2 antenna blip: chance and game seconds.</summary>
+        public static double Tier2SignalLossChance = 0.25;
+        public static double Tier2SignalLossMinSeconds = 0.5;
+        public static double Tier2SignalLossMaxSeconds = 2.0;
+
+        // --- Tier 3 damage (one failure per hit, picked from what the struck part can suffer) ---
+        public static double Tier3BreakChance = 0.6;
+        public static double Tier3PunctureChance = 0.25;
+        public static double Tier3LeakRateMinPctPerMin = 3.0;
+        public static double Tier3LeakRateMaxPctPerMin = 8.0;
+        public static double BatteryShortChance = 0.35;
+        /// <summary>Fraction of capacity a shorted battery loses until repaired.</summary>
+        public static double BatteryShortCapacityLoss = 0.3;
+        public static double FuelCellChance = 0.4;
+        public static double RcsChance = 0.4;
+        public static double EngineChance = 0.4;
+        public static double GeneratorChance = 0.3;
+        public static double FixedSolarChance = 0.3;
+        /// <summary>RTG / fixed panel output lost per hit (stacking), and the floor it stops at.</summary>
+        public static double OutputLossPerHit = 0.15;
+        public static double OutputFloor = 0.4;
+        public static double SasChance = 0.5;
+        public static double SignalLossChance = 0.4;
+        /// <summary>Game seconds a fixed antenna drops out for.</summary>
+        public static double SignalLossMinSeconds = 1.0;
+        public static double SignalLossMaxSeconds = 7.0;
 
         // --- Debris fields ---
         /// <summary>Field chance = FieldChanceMax × density / (density + FieldHalfDensity).</summary>
@@ -224,6 +257,56 @@ namespace KesslerSymptoms
                 () => LeakSealHalfLifeMinutes, v => LeakSealHalfLifeMinutes = v, 0.01, 1e5),
             Dbl("LeakVentSpeed", "Leak vent speed (m/s)", "Thrust from a leak = mass flow x this",
                 () => LeakVentSpeed, v => LeakVentSpeed = v, 0, 5000),
+            Dbl("Tier2ShortChance", "Partial short chance (tier 2)", "Chance (0-1) a tier 2 hit drains part of a battery's charge",
+                () => Tier2ShortChance, v => Tier2ShortChance = v, 0, 1),
+            Dbl("Tier2ShortMinLoss", "Partial short min loss", "Least fraction (0-1) of current charge a tier 2 short drains",
+                () => Tier2ShortMinLoss, v => Tier2ShortMinLoss = v, 0, 1),
+            Dbl("Tier2ShortMaxLoss", "Partial short max loss", "Most fraction (0-1) of current charge a tier 2 short drains",
+                () => Tier2ShortMaxLoss, v => Tier2ShortMaxLoss = v, 0, 1),
+            Dbl("Tier2SolarChance", "Fixed panel chance (tier 2)", "Chance (0-1) a tier 2 hit damages cells on a fixed solar panel",
+                () => Tier2SolarChance, v => Tier2SolarChance = v, 0, 1),
+            Dbl("Tier2SolarLossPerHit", "Fixed panel loss (tier 2)", "Output a tier 2 hit takes off a fixed panel (0-1)",
+                () => Tier2SolarLossPerHit, v => Tier2SolarLossPerHit = v, 0, 1),
+            Dbl("Tier2SignalLossChance", "Signal blip chance (tier 2)", "Chance (0-1) a tier 2 hit briefly drops out a fixed antenna",
+                () => Tier2SignalLossChance, v => Tier2SignalLossChance = v, 0, 1),
+            Dbl("Tier2SignalLossMinSeconds", "Signal blip min (s)", "Shortest tier 2 antenna dropout, game seconds",
+                () => Tier2SignalLossMinSeconds, v => Tier2SignalLossMinSeconds = v, 0, 3600),
+            Dbl("Tier2SignalLossMaxSeconds", "Signal blip max (s)", "Longest tier 2 antenna dropout, game seconds",
+                () => Tier2SignalLossMaxSeconds, v => Tier2SignalLossMaxSeconds = v, 0, 3600),
+            Dbl("Tier3BreakChance", "Break chance (tier 3)", "Chance (0-1) a tier 3 hit breaks a panel, antenna or radiator",
+                () => Tier3BreakChance, v => Tier3BreakChance = v, 0, 1),
+            Dbl("Tier3PunctureChance", "Puncture chance (tier 3)", "Chance (0-1) a tier 3 hit punctures a tank",
+                () => Tier3PunctureChance, v => Tier3PunctureChance = v, 0, 1),
+            Dbl("Tier3LeakRateMinPctPerMin", "Big leak min (%/min)", "Slowest starting tier 3 leak",
+                () => Tier3LeakRateMinPctPerMin, v => Tier3LeakRateMinPctPerMin = v, 0, 100),
+            Dbl("Tier3LeakRateMaxPctPerMin", "Big leak max (%/min)", "Fastest starting tier 3 leak",
+                () => Tier3LeakRateMaxPctPerMin, v => Tier3LeakRateMaxPctPerMin = v, 0, 100),
+            Dbl("BatteryShortChance", "Battery short chance", "Chance (0-1) a tier 3 hit shorts a part's battery (charge to 0)",
+                () => BatteryShortChance, v => BatteryShortChance = v, 0, 1),
+            Dbl("BatteryShortCapacityLoss", "Short capacity loss", "Fraction (0-1) of capacity a shorted battery loses until repaired",
+                () => BatteryShortCapacityLoss, v => BatteryShortCapacityLoss = v, 0, 1),
+            Dbl("FuelCellChance", "Fuel cell blowout chance", "Chance (0-1) a tier 3 hit blows out a fuel cell",
+                () => FuelCellChance, v => FuelCellChance = v, 0, 1),
+            Dbl("RcsChance", "RCS failure chance", "Chance (0-1) a tier 3 hit kills an RCS block",
+                () => RcsChance, v => RcsChance = v, 0, 1),
+            Dbl("EngineChance", "Engine flameout chance", "Chance (0-1) a tier 3 hit shuts down a running engine",
+                () => EngineChance, v => EngineChance = v, 0, 1),
+            Dbl("GeneratorChance", "RTG puncture chance", "Chance (0-1) a tier 3 hit cracks an RTG",
+                () => GeneratorChance, v => GeneratorChance = v, 0, 1),
+            Dbl("FixedSolarChance", "Fixed panel damage chance", "Chance (0-1) a tier 3 hit smashes cells on a fixed solar panel",
+                () => FixedSolarChance, v => FixedSolarChance = v, 0, 1),
+            Dbl("OutputLossPerHit", "Output loss per hit", "RTG / fixed panel output lost per hit (0-1), stacking",
+                () => OutputLossPerHit, v => OutputLossPerHit = v, 0, 1),
+            Dbl("OutputFloor", "Output floor", "RTG / fixed panel output never drops below this fraction (0-1)",
+                () => OutputFloor, v => OutputFloor = v, 0, 1),
+            Dbl("SasChance", "SAS knockout chance", "Chance (0-1) a tier 3 hit on a pod or probe core switches SAS off",
+                () => SasChance, v => SasChance = v, 0, 1),
+            Dbl("SignalLossChance", "Signal loss chance", "Chance (0-1) a tier 3 hit drops out a fixed antenna",
+                () => SignalLossChance, v => SignalLossChance = v, 0, 1),
+            Dbl("SignalLossMinSeconds", "Signal loss min (s)", "Shortest antenna dropout, game seconds",
+                () => SignalLossMinSeconds, v => SignalLossMinSeconds = v, 0, 3600),
+            Dbl("SignalLossMaxSeconds", "Signal loss max (s)", "Longest antenna dropout, game seconds",
+                () => SignalLossMaxSeconds, v => SignalLossMaxSeconds = v, 0, 3600),
             Dbl("FieldChanceMax", "Field chance max", "Highest chance (0-1) that an encounter is a debris field",
                 () => FieldChanceMax, v => FieldChanceMax = v, 0, 1),
             Dbl("FieldHalfDensity", "Field half density", "Density at which field chance reaches half its max",
@@ -260,7 +343,7 @@ namespace KesslerSymptoms
 
         /// <summary>Settings-tab sections, in display order.</summary>
         public static readonly string[] Sections =
-            { "Density & tiers", "Encounters", "Debris fields", "Damage & leaks", "Debris decay", "Audio & visuals", "Bands & scanning" };
+            { "Density & tiers", "Encounters", "Debris fields", "Damage & leaks", "Tier 3 damage", "Debris decay", "Audio & visuals", "Bands & scanning" };
 
         static Settings()
         {
@@ -271,7 +354,13 @@ namespace KesslerSymptoms
             Group("Debris fields", "FieldChanceMax", "FieldHalfDensity", "FieldDurationMin", "FieldDurationMax",
                 "FieldSecondsPerHit", "FieldPeltsPerSecond");
             Group("Damage & leaks", "Tier2BreakChance", "Tier2PunctureChance", "LeakRateMinPctPerMin",
-                "LeakRateMaxPctPerMin", "LeakSealHalfLifeMinutes", "LeakVentSpeed");
+                "LeakRateMaxPctPerMin", "LeakSealHalfLifeMinutes", "LeakVentSpeed", "Tier2ShortChance", "Tier2ShortMinLoss",
+                "Tier2ShortMaxLoss", "Tier2SolarChance", "Tier2SolarLossPerHit", "Tier2SignalLossChance",
+                "Tier2SignalLossMinSeconds", "Tier2SignalLossMaxSeconds");
+            Group("Tier 3 damage", "Tier3BreakChance", "Tier3PunctureChance", "Tier3LeakRateMinPctPerMin",
+                "Tier3LeakRateMaxPctPerMin", "BatteryShortChance", "BatteryShortCapacityLoss", "FuelCellChance",
+                "RcsChance", "EngineChance", "GeneratorChance", "FixedSolarChance", "OutputLossPerHit", "OutputFloor",
+                "SasChance", "SignalLossChance", "SignalLossMinSeconds", "SignalLossMaxSeconds");
             Group("Debris decay", "DecayBaseHours", "DecayScaleHeightFraction", "DecayRandomness");
             Group("Audio & visuals", "PingVolume", "AlarmVolume", "PeltVolume", "MarkFadeSeconds");
             Group("Bands & scanning", "ScanIntervalSeconds", "BandsPerBody", "CeilingRadii", "BandGrowth");
@@ -374,6 +463,12 @@ namespace KesslerSymptoms
                 roll -= k;
             }
             return 1;
+        }
+
+        /// <summary>RTG / fixed panel output fraction after this many hits.</summary>
+        public static double OutputFactor(int hits)
+        {
+            return Math.Max(OutputFloor, 1.0 - hits * OutputLossPerHit);
         }
 
         public static double ImpulseFor(int tier)

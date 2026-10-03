@@ -34,6 +34,13 @@ namespace KesslerSymptoms
         public static readonly string[] Snaps = { "Squad/Sounds/ksp1_strunts_disconnect_v3_pitched2" };
         /// <summary>Brittle cell shattering, layered on a snap when a solar panel breaks.</summary>
         public static readonly string[] Shatters = { "KesslerSymptoms/Sounds/glass1" };
+        // Tier 3 failure sounds: drop files with these names in Sounds/ (any that exist are used).
+        public static readonly string[] Zaps = { "KesslerSymptoms/Sounds/zap1", "KesslerSymptoms/Sounds/zap2" };
+        public static readonly string[] ZapFallback = { "Squad/Sounds/sound_click_sharp" };
+        public static readonly string[] Pops = { "KesslerSymptoms/Sounds/pop1", "KesslerSymptoms/Sounds/pop2" };
+        public static readonly string[] Statics = { "KesslerSymptoms/Sounds/static1", "KesslerSymptoms/Sounds/static2" };
+        /// <summary>Geiger counter clicking after an RTG is cracked (a few seconds, fades out).</summary>
+        public const string Geiger = "KesslerSymptoms/Sounds/geiger";
         /// <summary>Alarm for a part actually being damaged (distinct from the impact alert).</summary>
         public const string PartAlarm = "KesslerSymptoms/Sounds/partalarm";
         public const string Alarm = "KesslerSymptoms/Sounds/alert";
@@ -118,6 +125,38 @@ namespace KesslerSymptoms
                     (float)Settings.PingVolume * 0.45f, Random.Range(0.95f, 1.15f), 4000f);
         }
 
+        /// <summary>One-shot from the part's position (no-op if the clip is missing).</summary>
+        public static void PlayAtPart(Part part, AudioClip clip, float volumeScale, float lowPassHz)
+        {
+            PlayAt(clip, part.transform, part.transform.position, (float)Settings.PingVolume * volumeScale,
+                Random.Range(0.92f, 1.08f), lowPassHz);
+        }
+
+        /// <summary>
+        /// Loop a clip from the part for <paramref name="seconds"/>, then fade it out over a
+        /// quarter second, e.g. radio static for exactly as long as the signal is gone.
+        /// </summary>
+        public static void PlayFor(Part part, AudioClip clip, float seconds, float volumeScale, float lowPassHz)
+        {
+            if (clip == null || seconds <= 0f) return;
+            GameObject go = new GameObject("KesslerSymptoms_SfxLoop");
+            go.transform.SetParent(part.transform, false);
+
+            AudioSource src = go.AddComponent<AudioSource>();
+            src.clip = clip;
+            src.loop = true;
+            src.volume = (float)Settings.PingVolume * volumeScale * GameSettings.SHIP_VOLUME;
+            src.spatialBlend = 0.5f;
+            src.rolloffMode = AudioRolloffMode.Logarithmic;
+            src.minDistance = 15f;
+            src.maxDistance = 1000f;
+            src.dopplerLevel = 0f;
+            src.time = Random.Range(0f, clip.length);
+            if (lowPassHz > 0f) go.AddComponent<AudioLowPassFilter>().cutoffFrequency = lowPassHz;
+            src.Play();
+            go.AddComponent<SfxFadeOut>().Init(src, seconds);
+        }
+
         private static AudioSource source2D;
 
         /// <summary>
@@ -148,6 +187,31 @@ namespace KesslerSymptoms
             float v = volume * GameSettings.UI_VOLUME;
             source2D.PlayOneShot(clip, v);
             Log.Info(string.Format("Alarm: {0} ({1:F2} s) at volume {2:F2}", clip.name, clip.length, v));
+        }
+    }
+
+    /// <summary>Plays for a while, fades out over a quarter second, then removes itself.</summary>
+    public class SfxFadeOut : MonoBehaviour
+    {
+        private const float Fade = 0.25f;
+        private AudioSource src;
+        private float playFor;
+        private float startVolume;
+        private float age;
+
+        public void Init(AudioSource source, float seconds)
+        {
+            src = source;
+            playFor = seconds;
+            startVolume = source.volume;
+        }
+
+        public void Update()
+        {
+            age += Time.deltaTime;
+            if (src != null && age > playFor)
+                src.volume = startVolume * Mathf.Clamp01(1f - (age - playFor) / Fade);
+            if (age >= playFor + Fade) Destroy(gameObject);
         }
     }
 }

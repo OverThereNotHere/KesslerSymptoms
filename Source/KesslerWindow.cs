@@ -49,6 +49,17 @@ namespace KesslerSymptoms
         private string status = "";
         private string hoverHelp = "";
         private string damageStatus = "";
+        private static readonly KeyValuePair<string, Failure>[] Tier3Buttons =
+        {
+            new KeyValuePair<string, Failure>("Battery", Failure.BatteryShort),
+            new KeyValuePair<string, Failure>("Fuel cell", Failure.FuelCell),
+            new KeyValuePair<string, Failure>("RCS", Failure.Rcs),
+            new KeyValuePair<string, Failure>("Engine", Failure.Engine),
+            new KeyValuePair<string, Failure>("RTG", Failure.Generator),
+            new KeyValuePair<string, Failure>("Fixed panel", Failure.FixedSolar),
+            new KeyValuePair<string, Failure>("SAS", Failure.Sas),
+            new KeyValuePair<string, Failure>("Signal", Failure.SignalLoss),
+        };
         // Settings sections currently unfolded.
         private readonly HashSet<string> openSections = new HashSet<string> { "Density & tiers" };
 
@@ -323,6 +334,18 @@ namespace KesslerSymptoms
             if (GUILayout.Button("Puncture a tank"))
                 damageStatus = Damage.ForcePuncture(FlightGlobals.ActiveVessel);
             GUILayout.EndHorizontal();
+            // Tier 3 failures, each on a random part that can take it.
+            for (int row = 0; row < 2; row++)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(row == 0 ? "Tier 3" : "", GUILayout.Width(64));
+                for (int i = row * 4; i < row * 4 + 4; i++)
+                {
+                    if (GUILayout.Button(new GUIContent(Tier3Buttons[i].Key, "Force: " + Tier3Buttons[i].Value), smallButton))
+                        damageStatus = Damage.ForceFailure(FlightGlobals.ActiveVessel, Tier3Buttons[i].Value);
+                }
+                GUILayout.EndHorizontal();
+            }
             if (damageStatus.Length > 0) GUILayout.Label(damageStatus, helpStyle);
             GUI.enabled = true;
             if (blocker != null) GUILayout.Label("Unavailable: " + blocker + ".", helpStyle);
