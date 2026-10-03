@@ -16,6 +16,8 @@ namespace KesslerSymptoms
         public string Help;
         /// <summary>Changing this invalidates band geometry, so bands must be rebuilt.</summary>
         public bool AffectsBands;
+        /// <summary>On/off switch: shown in the Effects tab instead of the Settings tab.</summary>
+        public bool IsToggle;
         public Func<string> Get;
         public Func<string, bool> TrySet;
         /// <summary>True if the string parses; doesn't change anything.</summary>
@@ -30,6 +32,13 @@ namespace KesslerSymptoms
     public static class Settings
     {
         public const string NodeName = "KESSLER_SYMPTOMS";
+
+        // --- Effect toggles ---
+        /// <summary>Master switch for all encounter effects. Tracking keeps running either way.</summary>
+        public static bool EffectsEnabled = true;
+        public static bool Tier1Enabled = true;
+        public static bool Tier2Enabled = true;
+        public static bool Tier3Enabled = true;
 
         // --- Bands ---
         /// <summary>Bands generated per body between minOrbitalDistance and the ceiling.</summary>
@@ -61,6 +70,14 @@ namespace KesslerSymptoms
         /// <summary>Every tunable, in display order. Declared after the fields so defaults capture correctly.</summary>
         public static readonly List<SettingDef> Defs = new List<SettingDef>
         {
+            Bool("EffectsEnabled", "All effects", "Master switch; debris tracking keeps running when off",
+                () => EffectsEnabled, v => EffectsEnabled = v),
+            Bool("Tier1Enabled", "Tier 1: Sparse", "Micrometeorite pings, sounds, warning",
+                () => Tier1Enabled, v => Tier1Enabled = v),
+            Bool("Tier2Enabled", "Tier 2: Dense", "Panels and antennas can break, rare tank punctures",
+                () => Tier2Enabled, v => Tier2Enabled = v),
+            Bool("Tier3Enabled", "Tier 3: Debris field", "Large impacts: leaks, shorts, engine jams",
+                () => Tier3Enabled, v => Tier3Enabled = v),
             Dbl("DebrisWeightMultiplier", "Debris weight multiplier",
                 "Density one orbiting debris vessel adds to the bands it sweeps",
                 () => DebrisWeightMultiplier, v => DebrisWeightMultiplier = v, 0, 100),
@@ -124,6 +141,39 @@ namespace KesslerSymptoms
             };
             d.Default = d.Get();
             return d;
+        }
+
+        private static SettingDef Bool(string key, string label, string help,
+            Func<bool> get, Action<bool> set)
+        {
+            SettingDef d = new SettingDef
+            {
+                Key = key, Label = label, Help = help, IsToggle = true,
+                Get = () => get() ? "True" : "False",
+                IsValid = s => { bool v; return bool.TryParse(s, out v); },
+                TrySet = s =>
+                {
+                    bool v;
+                    if (!bool.TryParse(s, out v)) return false;
+                    set(v);
+                    return true;
+                },
+            };
+            d.Default = d.Get();
+            return d;
+        }
+
+        /// <summary>Whether effects of this tier (1..3) may fire, honouring the master switch.</summary>
+        public static bool TierEnabled(int tier)
+        {
+            if (!EffectsEnabled) return false;
+            switch (tier)
+            {
+                case 1: return Tier1Enabled;
+                case 2: return Tier2Enabled;
+                case 3: return Tier3Enabled;
+                default: return false;
+            }
         }
 
         private static bool ParseDouble(string s, out double v)

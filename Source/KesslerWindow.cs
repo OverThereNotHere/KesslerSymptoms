@@ -17,16 +17,17 @@ namespace KesslerSymptoms
     }
 
     /// <summary>
-    /// Toolbar button + the mod's window, drawn with KSP's stock IMGUI skin. Two tabs:
-    /// Debug (per-band density for a chosen body) and Settings (edit and save settings.cfg).
+    /// Toolbar button + the mod's window, drawn with KSP's stock IMGUI skin. Tabs:
+    /// Debug (per-band density for a chosen body), Effects (toggles and forced encounters)
+    /// and Settings (edit and save settings.cfg).
     /// </summary>
     [KSPAddon(KSPAddon.Startup.AllGameScenes, false)]
     public class KesslerWindow : MonoBehaviour
     {
         public const string ModId = "KesslerSymptoms";
 
-        private enum Tab { Debug, Settings }
-        private static readonly string[] TabNames = { "Debug", "Settings" };
+        private enum Tab { Debug, Effects, Settings }
+        private static readonly string[] TabNames = { "Debug", "Effects", "Settings" };
 
         private ToolbarControl toolbar;
         private bool visible;
@@ -129,6 +130,7 @@ namespace KesslerSymptoms
 
             KesslerScenario scn = KesslerScenario.Instance;
             if (tab == Tab.Debug) DrawDebug(scn);
+            else if (tab == Tab.Effects) DrawEffects();
             else DrawSettings(scn);
 
             GUI.DragWindow();
@@ -220,6 +222,42 @@ namespace KesslerSymptoms
             GUILayout.Label(text, style, GUILayout.Width(width));
         }
 
+        // ---------------------------------------------------------------- Effects tab
+
+        private void DrawEffects()
+        {
+            GUILayout.Label("Effect toggles", headerStyle);
+            foreach (SettingDef d in Settings.Defs)
+            {
+                if (!d.IsToggle) continue;
+                bool on = d.Get() == "True";
+                bool now = GUILayout.Toggle(on, new GUIContent(" " + d.Label, d.Help));
+                if (now != on)
+                {
+                    d.TrySet(now ? "True" : "False");
+                    edits[d.Key] = d.Get();
+                    Settings.Save();
+                }
+            }
+            GUILayout.Label("Toggles save to settings.cfg immediately. Debris tracking always runs.", helpStyle);
+
+            GUILayout.Space(8);
+            GUILayout.Label("Force an encounter on the active vessel", headerStyle);
+            string blocker = Encounters.Blocker(FlightGlobals.ActiveVessel);
+            GUI.enabled = blocker == null;
+            GUILayout.BeginHorizontal();
+            for (int tier = 1; tier <= 3; tier++)
+            {
+                if (GUILayout.Button("Tier " + tier))
+                    Encounters.Trigger(FlightGlobals.ActiveVessel, tier, true);
+            }
+            GUILayout.EndHorizontal();
+            GUI.enabled = true;
+            GUILayout.Label(blocker != null
+                ? "Unavailable: " + blocker + "."
+                : "Forced encounters ignore the toggles above.", helpStyle);
+        }
+
         // ---------------------------------------------------------------- Settings tab
 
         private void DrawSettings(KesslerScenario scn)
@@ -227,6 +265,7 @@ namespace KesslerSymptoms
             settingsScroll = GUILayout.BeginScrollView(settingsScroll, GUILayout.Height(300));
             foreach (SettingDef d in Settings.Defs)
             {
+                if (d.IsToggle) continue;
                 string text = edits[d.Key];
                 bool changed = text != d.Get();
 
@@ -262,7 +301,8 @@ namespace KesslerSymptoms
             }
             if (GUILayout.Button(new GUIContent("Defaults", "Fill in the defaults (still needs Apply)")))
             {
-                foreach (SettingDef d in Settings.Defs) edits[d.Key] = d.Default;
+                foreach (SettingDef d in Settings.Defs)
+                    if (!d.IsToggle) edits[d.Key] = d.Default;
                 status = "Defaults filled in; Apply to use them";
             }
             GUILayout.EndHorizontal();
@@ -282,6 +322,7 @@ namespace KesslerSymptoms
             int bad = 0;
             foreach (SettingDef d in Settings.Defs)
             {
+                if (d.IsToggle) continue;
                 string before = d.Get();
                 if (!d.TrySet(edits[d.Key]))
                 {

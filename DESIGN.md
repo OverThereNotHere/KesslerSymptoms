@@ -35,12 +35,30 @@ to that band, decaying with half-life `ExplosionHalfLifeDays`. Persisted per sav
 the body's lowest band (so a sparse high shell doesn't read as dense just because it's huge).
 Thresholds `Tier1At / Tier2At / Tier3At` map density to the severity tiers in `idea.md`.
 
+## Encounters
+
+All encounters go through `Encounters.Trigger(vessel, tier, forced)`, which enforces the
+rules (flight scene, active vessel, loaded and off rails, tier toggles unless forced) and
+runs the tier's `IEncounterEffect`. The Effects tab can force any tier for testing.
+
+**Hit rate.** While the active vessel is off rails in a band at tier ≥ 1, hits arrive at
+random (Poisson) with mean `HitsPerHourPerDensity × density` per hour. The hit uses the
+band's current tier. All knobs live in Settings.
+
+### Tier 1: Sparse (spec, decided 2026-10-02)
+
+- **Ping:** sound + brief spark flash at a random point on a random part. No gameplay effect.
+- **Warning:** on entering a band at tier ≥ 1, or when the tier rises while inside one:
+  screen message + alarm sound, once per entry/rise (not per hit).
+- **Sounds:** the user will provide custom sounds in `Sounds/`. Until a file exists, fall
+  back to stock (`Squad/Sounds/sound_click_tick|tock|sharp` for pings, an `Squad/Alarms`
+  sound for the warning). File names to be agreed when the sounds arrive.
+
 ## Milestones
 
-1. **Band tracking + debug window** ← current. Bands for every body, live debris scan,
-   explosion spikes with persistence, toolbar button + diagnostics window.
+1. ~~Band tracking + debug window~~ done. Debug / Effects / Settings tabs.
 2. Debris lifetime deletion.
-3. Hit scheduler (active vessel, off rails only) + tier 1 effects (pings, sound, warning).
+3. Hit scheduler (active vessel, off rails only) + tier 1 effects (pings, sound, warning). ← next
 4. Tier 2 (stock panel/antenna breakage, rare tank puncture via custom module).
 5. Tier 3 + EVA engineer repair for custom failures.
 
@@ -52,4 +70,5 @@ Thresholds `Tier1At / Tier2At / Tier3At` map density to the severity tiers in `i
 | `Plugins/KesslerSymptoms.dll` | Build output (git-ignored) |
 | `PluginData/settings.cfg` | Tunables (generated with defaults on first run; editable in the Settings tab) |
 | `Textures/` | Toolbar icons |
+| `Sounds/` | Custom sounds (user-provided; stock fallbacks used until present) |
 | `noKits.cfg` | MM patch: free repairs |
