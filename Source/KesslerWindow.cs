@@ -240,6 +240,7 @@ namespace KesslerSymptoms
                 }
             }
             GUILayout.Label("Toggles save to settings.cfg immediately. Debris tracking always runs.", helpStyle);
+            if (GUILayout.Button("Test alarm", GUILayout.Width(120))) Encounters.PlayAlarm();
 
             GUILayout.Space(8);
             GUILayout.Label("Active vessel", headerStyle);

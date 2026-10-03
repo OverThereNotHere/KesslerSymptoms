@@ -75,8 +75,8 @@ namespace KesslerSymptoms
         public static double PingVolume = 1.0;
         public static double AlarmVolume = 0.7;
         /// <summary>Impulse (tonne·m/s) pushed into the hit part, per tier. Tier 1 is harmless.</summary>
-        public static double Tier2Impulse = 0.3;
-        public static double Tier3Impulse = 1.5;
+        public static double Tier2Impulse = 0.1;
+        public static double Tier3Impulse = 0.5;
 
         // --- Debris fields ---
         /// <summary>Field chance = FieldChanceMax × density / (density + FieldHalfDensity).</summary>

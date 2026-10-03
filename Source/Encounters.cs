@@ -177,6 +177,11 @@ namespace KesslerSymptoms
             lastAlert = now;
 
             ScreenMessages.PostScreenMessage(text, 4f, ScreenMessageStyle.UPPER_CENTER, AlertColor);
+            PlayAlarm();
+        }
+
+        public static void PlayAlarm()
+        {
             Sfx.Play2D(Sfx.Get(Sfx.Alarm, Sfx.AlarmFallback), (float)Settings.AlarmVolume);
         }
     }

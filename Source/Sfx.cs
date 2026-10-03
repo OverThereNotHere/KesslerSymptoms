@@ -68,17 +68,36 @@ namespace KesslerSymptoms
             Object.Destroy(go, clip.length / Mathf.Max(0.1f, pitch) + 0.1f);
         }
 
-        /// <summary>Play a non-positional clip, e.g. an alarm.</summary>
+        private static AudioSource source2D;
+
+        /// <summary>
+        /// Play a non-positional clip, e.g. an alarm, on one persistent source at top priority.
+        /// Unity only plays a limited number of voices at once and silently drops the
+        /// lowest-priority ones, which a big ship's part sounds plus field pelts can exhaust.
+        /// </summary>
         public static void Play2D(AudioClip clip, float volume)
         {
-            if (clip == null) return;
-            GameObject go = new GameObject("KesslerSymptoms_Sfx2D");
-            AudioSource src = go.AddComponent<AudioSource>();
-            src.clip = clip;
-            src.volume = volume * GameSettings.UI_VOLUME;
-            src.spatialBlend = 0f;
-            src.Play();
-            Object.Destroy(go, clip.length + 0.1f);
+            if (clip == null)
+            {
+                Log.Warn("Play2D: no clip");
+                return;
+            }
+            if (source2D == null)
+            {
+                GameObject go = new GameObject("KesslerSymptoms_Sfx2D");
+                Object.DontDestroyOnLoad(go);
+                source2D = go.AddComponent<AudioSource>();
+                source2D.playOnAwake = false;
+                source2D.spatialBlend = 0f;
+                source2D.priority = 0;
+                source2D.dopplerLevel = 0f;
+                source2D.bypassEffects = true;
+                source2D.bypassListenerEffects = true;
+                source2D.bypassReverbZones = true;
+            }
+            float v = volume * GameSettings.UI_VOLUME;
+            source2D.PlayOneShot(clip, v);
+            Log.Info(string.Format("Alarm: {0} ({1:F2} s) at volume {2:F2}", clip.name, clip.length, v));
         }
     }
 }
