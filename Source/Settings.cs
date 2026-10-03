@@ -18,6 +18,8 @@ namespace KesslerSymptoms
         public bool AffectsBands;
         /// <summary>On/off switch: shown in the Effects tab instead of the Settings tab.</summary>
         public bool IsToggle;
+        /// <summary>Settings-tab group this belongs to (foldable header).</summary>
+        public string Section = "Other";
         public Func<string> Get;
         public Func<string, bool> TrySet;
         /// <summary>True if the string parses; doesn't change anything.</summary>
@@ -43,6 +45,10 @@ namespace KesslerSymptoms
         public static bool RailsWarpEncounters = true;
         /// <summary>Old debris is deleted after an altitude-based lifetime.</summary>
         public static bool DebrisDecayEnabled = true;
+        /// <summary>Drifting specks around the ship during a debris field.</summary>
+        public static bool FieldVisualsEnabled = true;
+        /// <summary>Fading scorch marks where hits land.</summary>
+        public static bool ImpactMarksEnabled = true;
 
         // --- Debris decay ---
         /// <summary>Lifetime (game hours) of debris with periapsis right at the top of the atmosphere.</summary>
@@ -74,7 +80,7 @@ namespace KesslerSymptoms
         /// <summary>Half-life of an explosion spike, in game days (6 h Kerbin / 24 h Earth calendar).</summary>
         public static double ExplosionHalfLifeDays = 30.0;
         /// <summary>Density added when debris breaks a panel/antenna/radiator in orbit (smaller than a part dying).</summary>
-        public static double BreakSpike = 0.2;
+        public static double BreakSpike = 0.1;
 
         // --- Tiers (density thresholds) ---
         public static double Tier1At = 2.0;
@@ -118,6 +124,8 @@ namespace KesslerSymptoms
         public static double FieldPeltsPerSecond = 6.0;
         /// <summary>Micro pelt volume as a fraction of PingVolume.</summary>
         public static double PeltVolume = 0.35;
+        /// <summary>Real seconds an impact mark takes to fade away.</summary>
+        public static double MarkFadeSeconds = 30.0;
 
         /// <summary>Every tunable, in display order. Declared after the fields so defaults capture correctly.</summary>
         public static readonly List<SettingDef> Defs = new List<SettingDef>
@@ -136,6 +144,10 @@ namespace KesslerSymptoms
             Bool("DebrisDecayEnabled", "Debris decay",
                 "Delete old debris after a lifetime based on periapsis height (never on airless bodies)",
                 () => DebrisDecayEnabled, v => DebrisDecayEnabled = v),
+            Bool("FieldVisualsEnabled", "Debris field visuals", "Specks drift past the ship during a field, denser at higher tiers",
+                () => FieldVisualsEnabled, v => FieldVisualsEnabled = v),
+            Bool("ImpactMarksEnabled", "Impact marks", "Hits leave a scorch mark that fades out",
+                () => ImpactMarksEnabled, v => ImpactMarksEnabled = v),
             Dbl("DebrisWeightMultiplier", "Debris weight multiplier",
                 "Density one orbiting debris vessel adds to the bands it sweeps",
                 () => DebrisWeightMultiplier, v => DebrisWeightMultiplier = v, 0, 100),
@@ -205,6 +217,8 @@ namespace KesslerSymptoms
                 () => DecayScaleHeightFraction, v => DecayScaleHeightFraction = v, 0.001, 10),
             Dbl("DecayRandomness", "Decay randomness", "Each piece's lifetime is scaled by e^(+/- this)",
                 () => DecayRandomness, v => DecayRandomness = v, 0, 5),
+            Dbl("MarkFadeSeconds", "Impact mark fade (s)", "Seconds an impact mark takes to fade away",
+                () => MarkFadeSeconds, v => MarkFadeSeconds = v, 0, 3600),
             Dbl("ScanIntervalSeconds", "Rescan interval (s)", "Real-time seconds between debris scans",
                 () => ScanIntervalSeconds, v => ScanIntervalSeconds = (float)v, 0.5, 600),
             Int("BandsPerBody", "Bands per body", "Altitude bands generated around each body",
@@ -214,6 +228,30 @@ namespace KesslerSymptoms
             Dbl("BandGrowth", "Band growth", "Thickness ratio between consecutive bands (1 = uniform)",
                 () => BandGrowth, v => BandGrowth = v, 1.0, 5.0, true),
         };
+
+        /// <summary>Settings-tab sections, in display order.</summary>
+        public static readonly string[] Sections =
+            { "Density & tiers", "Encounters", "Debris fields", "Damage & leaks", "Debris decay", "Audio & visuals", "Bands & scanning" };
+
+        static Settings()
+        {
+            Group("Density & tiers", "DebrisWeightMultiplier", "ExplosionSpike", "ExplosionHalfLifeDays", "BreakSpike",
+                "Tier1At", "Tier2At", "Tier3At");
+            Group("Encounters", "HitsPerHourPerDensity", "AlertCooldownSeconds", "Tier2Impulse", "Tier3Impulse");
+            Group("Debris fields", "FieldChanceMax", "FieldHalfDensity", "FieldDurationMin", "FieldDurationMax",
+                "FieldSecondsPerHit", "FieldPeltsPerSecond");
+            Group("Damage & leaks", "Tier2BreakChance", "Tier2PunctureChance", "LeakRateMinPctPerMin",
+                "LeakRateMaxPctPerMin", "LeakSealHalfLifeMinutes", "LeakVentSpeed");
+            Group("Debris decay", "DecayBaseHours", "DecayScaleHeightFraction", "DecayRandomness");
+            Group("Audio & visuals", "PingVolume", "AlarmVolume", "PeltVolume", "MarkFadeSeconds");
+            Group("Bands & scanning", "ScanIntervalSeconds", "BandsPerBody", "CeilingRadii", "BandGrowth");
+        }
+
+        private static void Group(string section, params string[] keys)
+        {
+            foreach (SettingDef d in Defs)
+                if (Array.IndexOf(keys, d.Key) >= 0) d.Section = section;
+        }
 
         private static SettingDef Dbl(string key, string label, string help,
             Func<double> get, Action<double> set, double min, double max, bool bands = false)

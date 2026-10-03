@@ -103,7 +103,7 @@ namespace KesslerSymptoms
             if (candidates.Count == 0) return "no intact tanks with leakable contents";
             ModuleKesslerDamage pick = candidates[Random.Range(0, candidates.Count)];
             Vector3 point, normal;
-            Encounters.PickSurfacePoint(pick.part, out point, out normal);
+            Encounters.PickSurfacePoint(pick.part, null, out point, out normal);
             Puncture(pick, point, normal);
             return "punctured " + pick.part.partInfo.title;
         }

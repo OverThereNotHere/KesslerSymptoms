@@ -87,7 +87,7 @@ namespace KesslerSymptoms
         }
 
         /// <summary>Additive particle material with a soft round dot texture, built once.</summary>
-        private static Material SparkMaterial
+        public static Material SparkMaterial
         {
             get
             {

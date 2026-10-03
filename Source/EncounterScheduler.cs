@@ -37,6 +37,7 @@ namespace KesslerSymptoms
         /// <summary>The field currently hitting the active vessel, or null.</summary>
         public DebrisField Field { get; private set; }
         private Vessel fieldVessel;
+        private FieldFx fieldFx;
 
         /// <summary>A tier 2/3 encounter waiting for the vessel to leave warp and unpack.</summary>
         private class Pending
@@ -113,8 +114,10 @@ namespace KesslerSymptoms
         {
             // Only a tier 1 field arriving mid-warp leaves the warp alone.
             bool blocksWarp = !(v.packed && tier == 1);
+            if (fieldFx != null) fieldFx.End(); // a forced field can replace a running one
             Field = new DebrisField(tier, forced, Planetarium.GetUniversalTime(), blocksWarp);
             fieldVessel = v;
+            fieldFx = FieldFx.Create(v, tier, Field.FlowWorld(v));
             Encounters.Alert(string.Format("Debris field! Tier {0}: {1}", tier, Encounters.TierNames[tier]), true);
             Log.Info(string.Format("Tier {0} debris field on {1}{2}, {3:F0} s",
                 tier, v.vesselName, forced ? " (forced)" : "", Field.EndUT - Planetarium.GetUniversalTime()));
@@ -126,6 +129,8 @@ namespace KesslerSymptoms
                 ScreenMessages.PostScreenMessage("Debris field passed", 3f, ScreenMessageStyle.UPPER_CENTER, WarningColor);
             Field = null;
             fieldVessel = null;
+            if (fieldFx != null) fieldFx.End(); // fades out, then removes itself
+            fieldFx = null;
         }
 
         public void Update()

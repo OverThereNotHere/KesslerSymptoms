@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace KesslerSymptoms
 {
@@ -20,6 +21,11 @@ namespace KesslerSymptoms
         /// mid-warp doesn't stop the warp, so it doesn't lock it either.
         /// </summary>
         public readonly bool BlocksWarp;
+        /// <summary>
+        /// Direction the debris travels, in the vessel's local frame (so it turns with the ship,
+        /// matching the cloud visuals). Hits and pelts come from the upstream side.
+        /// </summary>
+        public readonly Vector3 FlowLocal;
 
         private double nextHitUT;
         private double nextPeltUT;
@@ -29,6 +35,7 @@ namespace KesslerSymptoms
             Tier = tier;
             Forced = forced;
             BlocksWarp = blocksWarp;
+            FlowLocal = UnityEngine.Random.onUnitSphere;
             double min = Math.Min(Settings.FieldDurationMin, Settings.FieldDurationMax);
             double max = Math.Max(Settings.FieldDurationMin, Settings.FieldDurationMax);
             EndUT = now + min + UnityEngine.Random.value * (max - min);
@@ -39,6 +46,11 @@ namespace KesslerSymptoms
         private static double PeltGap
         {
             get { return Settings.FieldPeltsPerSecond > 0 ? 1.0 / Settings.FieldPeltsPerSecond : double.PositiveInfinity; }
+        }
+
+        public Vector3 FlowWorld(Vessel vessel)
+        {
+            return vessel.transform.TransformDirection(FlowLocal);
         }
 
         /// <summary>Random gap with the given mean (exponential), so arrivals feel irregular.</summary>
@@ -62,16 +74,17 @@ namespace KesslerSymptoms
                 return true;
             }
 
+            Vector3 flow = FlowWorld(vessel);
             for (int n = 0; now >= nextHitUT && n < MaxHitsPerTick; n++)
             {
-                Encounters.Trigger(vessel, Tier, Forced, false);
+                Encounters.Trigger(vessel, Tier, Forced, false, flow);
                 nextHitUT += NextGap(Settings.FieldSecondsPerHit);
             }
             if (now >= nextHitUT) nextHitUT = now + NextGap(Settings.FieldSecondsPerHit);
 
             for (int n = 0; now >= nextPeltUT && n < MaxPeltsPerTick; n++)
             {
-                Encounters.Pelt(vessel);
+                Encounters.Pelt(vessel, flow);
                 nextPeltUT += NextGap(PeltGap);
             }
             if (now >= nextPeltUT) nextPeltUT = now + NextGap(PeltGap);

@@ -32,7 +32,8 @@ namespace KesslerSymptoms
         private ToolbarControl toolbar;
         private bool visible;
         private Tab tab = Tab.Debug;
-        private Rect rect = new Rect(200, 120, 720, 0);
+        private const float WindowWidth = 580f;
+        private Rect rect = new Rect(200, 120, WindowWidth, 0);
         private readonly int windowId = "KesslerSymptoms.Window".GetHashCode();
 
         // Debug tab
@@ -48,9 +49,11 @@ namespace KesslerSymptoms
         private string status = "";
         private string hoverHelp = "";
         private string damageStatus = "";
+        // Settings sections currently unfolded.
+        private readonly HashSet<string> openSections = new HashSet<string> { "Density & tiers" };
 
         // Styles are built from HighLogic.Skin on first OnGUI (they can't be made outside it).
-        private GUIStyle headerStyle, cellStyle, badFieldStyle, changedLabelStyle, helpStyle;
+        private GUIStyle headerStyle, cellStyle, badFieldStyle, changedLabelStyle, helpStyle, foldStyle, smallButton;
         private GUIStyle[] tierStyles;
 
         public void Start()
@@ -97,7 +100,7 @@ namespace KesslerSymptoms
             if (headerStyle == null) BuildStyles();
 
             rect = ClickThruBlocker.GUILayoutWindow(windowId, rect, DrawWindow, "Kessler Symptoms",
-                GUILayout.Width(720));
+                GUILayout.Width(WindowWidth));
 
             GUI.skin = oldSkin;
         }
@@ -122,6 +125,8 @@ namespace KesslerSymptoms
             changedLabelStyle = new GUIStyle(skin.label);
             changedLabelStyle.normal.textColor = Color.yellow;
             helpStyle = new GUIStyle(skin.label) { wordWrap = true, fontStyle = FontStyle.Italic };
+            foldStyle = new GUIStyle(skin.button) { alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold };
+            smallButton = new GUIStyle(skin.button) { padding = new RectOffset(6, 6, 2, 2) };
         }
 
         private void DrawWindow(int id)
@@ -155,8 +160,9 @@ namespace KesslerSymptoms
             GUILayout.Label(body.bodyName, headerStyle, GUILayout.Width(110));
             if (GUILayout.Button(">", GUILayout.Width(30))) bodyIndex = (bodyIndex + 1) % bodies.Count;
             GUILayout.FlexibleSpace();
-            GUILayout.Label(string.Format("Debris in orbit: {0}   Spikes: {1}   Decayed (session): {2}",
-                scn.LastScanDebrisCount, scn.SpikeCount, scn.DecayedThisSession));
+            GUILayout.Label(new GUIContent(
+                string.Format("Debris {0} | Spikes {1} | Decayed {2}", scn.LastScanDebrisCount, scn.SpikeCount, scn.DecayedThisSession),
+                "Orbiting debris (all bodies) | active explosion spikes | debris decayed this session"));
             GUILayout.EndHorizontal();
 
             int activeBand = -1;
@@ -165,12 +171,12 @@ namespace KesslerSymptoms
                 activeBand = set.IndexOf(av.altitude + body.Radius);
 
             GUILayout.BeginHorizontal();
-            Cell("#", 30, headerStyle); Cell("Altitude (km)", 150, headerStyle); Cell("Debris", 60, headerStyle);
-            Cell("Weight", 70, headerStyle); Cell("Spike", 70, headerStyle); Cell("Density", 80, headerStyle);
-            Cell("Tier", 40, headerStyle); Cell("Lifetime", 80, headerStyle);
+            Cell("#", 34, headerStyle); Cell("Alt (km)", 110, headerStyle); Cell("Debris", 52, headerStyle);
+            Cell("Weight", 56, headerStyle); Cell("Spike", 50, headerStyle); Cell("Density", 60, headerStyle);
+            Cell("Tier", 34, headerStyle); Cell("Lifetime", 80, headerStyle);
             GUILayout.EndHorizontal();
 
-            debugScroll = GUILayout.BeginScrollView(debugScroll, GUILayout.Height(280));
+            debugScroll = GUILayout.BeginScrollView(debugScroll, GUILayout.Height(250));
             for (int i = 0; i < set.Count; i++)
             {
                 double density = set.Density(i);
@@ -178,40 +184,38 @@ namespace KesslerSymptoms
                 GUIStyle style = tierStyles[tier];
 
                 GUILayout.BeginHorizontal();
-                Cell((i == activeBand ? "> " : "") + i, 30, style);
-                Cell(string.Format("{0:N0} - {1:N0}", set.InnerAltitude(i) / 1000, set.OuterAltitude(i) / 1000), 150, style);
-                Cell(set.DebrisCount[i].ToString(), 60, style);
-                Cell(set.DebrisWeight[i].ToString("F2"), 70, style);
-                Cell(set.Spike[i].ToString("F2"), 70, style);
-                Cell(density.ToString("F2"), 80, style);
-                Cell(tier.ToString(), 40, style);
+                Cell((i == activeBand ? "> " : "") + i, 34, style);
+                Cell(string.Format("{0:N0}-{1:N0}", set.InnerAltitude(i) / 1000, set.OuterAltitude(i) / 1000), 110, style);
+                Cell(set.DebrisCount[i].ToString(), 52, style);
+                Cell(set.DebrisWeight[i].ToString("F2"), 56, style);
+                Cell(set.Spike[i].ToString("F2"), 50, style);
+                Cell(density.ToString("F2"), 60, style);
+                Cell(tier.ToString(), 34, style);
                 Cell(Decay.Format(Decay.LifetimeSeconds(body, set.Inner[i])), 80, style);
                 GUILayout.EndHorizontal();
             }
             GUILayout.EndScrollView();
 
+            // Debug: rescan, and inject spikes into a band without blowing anything up.
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Rescan now")) scn.Rescan();
-            GUILayout.EndHorizontal();
-
-            // Debug: inject an explosion spike into a band without blowing anything up.
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Test spike in band", GUILayout.Width(140));
-            if (GUILayout.Button("-", GUILayout.Width(25))) spikeBand = Mathf.Max(0, spikeBand - 1);
+            if (GUILayout.Button("Rescan", smallButton)) scn.Rescan();
+            GUILayout.Space(10);
+            GUILayout.Label("Spike band", GUILayout.Width(80));
+            if (GUILayout.Button("<", smallButton, GUILayout.Width(24))) spikeBand = Mathf.Max(0, spikeBand - 1);
             spikeBand = Mathf.Clamp(spikeBand, 0, set.Count - 1);
-            GUILayout.Label(spikeBand.ToString(), GUILayout.Width(25));
-            if (GUILayout.Button("+", GUILayout.Width(25))) spikeBand = Mathf.Min(set.Count - 1, spikeBand + 1);
-            if (GUILayout.Button("+" + Settings.ExplosionSpike))
+            GUILayout.Label(spikeBand.ToString(), GUILayout.Width(22));
+            if (GUILayout.Button(">", smallButton, GUILayout.Width(24))) spikeBand = Mathf.Min(set.Count - 1, spikeBand + 1);
+            if (GUILayout.Button("+" + Settings.ExplosionSpike, smallButton))
             {
                 scn.AddSpike(body, (set.Inner[spikeBand] + set.Outer[spikeBand]) / 2, Settings.ExplosionSpike);
                 scn.Rescan();
             }
-            if (GUILayout.Button("-" + Settings.ExplosionSpike))
+            if (GUILayout.Button("-" + Settings.ExplosionSpike, smallButton))
             {
                 scn.ReduceSpikes(body, set.Inner[spikeBand], set.Outer[spikeBand], Settings.ExplosionSpike);
                 scn.Rescan();
             }
-            if (GUILayout.Button("Reset band"))
+            if (GUILayout.Button("Clear", smallButton))
             {
                 scn.ReduceSpikes(body, set.Inner[spikeBand], set.Outer[spikeBand], double.PositiveInfinity);
                 scn.Rescan();
@@ -228,23 +232,36 @@ namespace KesslerSymptoms
 
         private void DrawEffects()
         {
-            GUILayout.Label("Toggles", headerStyle);
-            foreach (SettingDef d in Settings.Defs)
-            {
-                if (!d.IsToggle) continue;
-                bool on = d.Get() == "True";
-                bool now = GUILayout.Toggle(on, new GUIContent(" " + d.Label, d.Help));
-                if (now != on)
-                {
-                    d.TrySet(now ? "True" : "False");
-                    edits[d.Key] = d.Get();
-                    Settings.Save();
-                }
-            }
-            GUILayout.Label("Toggles save to settings.cfg immediately. Debris tracking always runs.", helpStyle);
-            if (GUILayout.Button("Test alarm", GUILayout.Width(120))) Encounters.PlayAlarm();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(new GUIContent("Toggles", "Saved to settings.cfg immediately. Debris tracking always runs."), headerStyle);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Test alarm", smallButton)) Encounters.PlayAlarm();
+            GUILayout.EndHorizontal();
 
-            GUILayout.Space(8);
+            // Two columns of toggles.
+            List<SettingDef> toggles = Settings.Defs.FindAll(d => d.IsToggle);
+            int half = (toggles.Count + 1) / 2;
+            GUILayout.BeginHorizontal();
+            for (int col = 0; col < 2; col++)
+            {
+                GUILayout.BeginVertical(GUILayout.Width(WindowWidth / 2 - 14));
+                for (int i = col * half; i < Mathf.Min(toggles.Count, (col + 1) * half); i++)
+                {
+                    SettingDef d = toggles[i];
+                    bool on = d.Get() == "True";
+                    bool now = GUILayout.Toggle(on, new GUIContent(" " + d.Label, d.Help));
+                    if (now != on)
+                    {
+                        d.TrySet(now ? "True" : "False");
+                        edits[d.Key] = d.Get();
+                        Settings.Save();
+                    }
+                }
+                GUILayout.EndVertical();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
             GUILayout.Label("Active vessel", headerStyle);
             if (HighLogic.LoadedScene != GameScenes.FLIGHT)
             {
@@ -261,9 +278,9 @@ namespace KesslerSymptoms
                     EncounterScheduler.CurrentBand, EncounterScheduler.CurrentDensity,
                     tier, Encounters.TierNames[tier]), tierStyles[tier]);
                 GUILayout.Label(EncounterScheduler.Rolling
-                    ? string.Format("Rolling for encounters: ~{0:F1} per game hour, {1:P0} chance each is a field",
+                    ? string.Format("~{0:F1} encounters/game hour, {1:P0} fields",
                         EncounterScheduler.CurrentHitsPerHour, Settings.FieldChance(EncounterScheduler.CurrentDensity))
-                    : "Not rolling for encounters (clear band, tier disabled, or on rails).");
+                    : "Not rolling (clear band, tier off, or on rails)");
             }
             EncounterScheduler sched = EncounterScheduler.Instance;
             if (sched != null && sched.Field != null)
@@ -272,12 +289,13 @@ namespace KesslerSymptoms
                     sched.Field.Tier, sched.Field.EndUT - Planetarium.GetUniversalTime()), tierStyles[sched.Field.Tier]);
             }
 
-            GUILayout.Space(8);
-            GUILayout.Label("Force an encounter on the active vessel", headerStyle);
+            GUILayout.Space(6);
+            GUILayout.Label(new GUIContent("Force on active vessel",
+                "Forced encounters ignore the tier toggles. In rails warp, tier 2/3 drop you to 1x first."), headerStyle);
             string blocker = Encounters.Blocker(FlightGlobals.ActiveVessel);
             GUI.enabled = blocker == null;
             GUILayout.BeginHorizontal();
-            GUILayout.Label("One-off", GUILayout.Width(70));
+            GUILayout.Label("One-off", GUILayout.Width(64));
             for (int tier = 1; tier <= 3; tier++)
             {
                 if (GUILayout.Button("Tier " + tier) && sched != null)
@@ -285,58 +303,82 @@ namespace KesslerSymptoms
             }
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Field", GUILayout.Width(70));
+            GUILayout.Label("Field", GUILayout.Width(64));
             for (int tier = 1; tier <= 3; tier++)
             {
                 if (GUILayout.Button("Tier " + tier) && sched != null)
                     sched.Request(tier, true, true);
             }
             GUI.enabled = sched != null && sched.Field != null;
-            if (GUILayout.Button("End field", GUILayout.Width(90))) sched.StopField();
+            if (GUILayout.Button("End", GUILayout.Width(60))) sched.StopField();
             GUI.enabled = blocker == null;
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Damage", GUILayout.Width(70));
-            if (GUILayout.Button("Break a panel/antenna"))
+            GUILayout.Label("Damage", GUILayout.Width(64));
+            if (GUILayout.Button("Break panel/antenna"))
                 damageStatus = Damage.ForceBreak(FlightGlobals.ActiveVessel);
             if (GUILayout.Button("Puncture a tank"))
                 damageStatus = Damage.ForcePuncture(FlightGlobals.ActiveVessel);
             GUILayout.EndHorizontal();
             if (damageStatus.Length > 0) GUILayout.Label(damageStatus, helpStyle);
             GUI.enabled = true;
-            GUILayout.Label(blocker != null
-                ? "Unavailable: " + blocker + "."
-                : "Forced encounters ignore the tier toggles. In rails warp, tier 2/3 drop you to 1x first.", helpStyle);
+            if (blocker != null) GUILayout.Label("Unavailable: " + blocker + ".", helpStyle);
+
+            HoverHelp();
+        }
+
+        /// <summary>
+        /// Hovered control's tooltip in a fixed-height line. GUI.tooltip is only filled in during
+        /// Repaint, so showing it directly would make Layout and Repaint disagree about this
+        /// label's size (it got squeezed into a one-letter-wide column). Latch it on Repaint and
+        /// show it from the next frame on.
+        /// </summary>
+        private void HoverHelp()
+        {
+            GUILayout.Label(hoverHelp, helpStyle, GUILayout.Height(34), GUILayout.ExpandWidth(true));
+            if (Event.current.type == EventType.Repaint) hoverHelp = GUI.tooltip;
         }
 
         // ---------------------------------------------------------------- Settings tab
 
         private void DrawSettings(KesslerScenario scn)
         {
-            settingsScroll = GUILayout.BeginScrollView(settingsScroll, GUILayout.Height(300));
-            foreach (SettingDef d in Settings.Defs)
+            settingsScroll = GUILayout.BeginScrollView(settingsScroll, GUILayout.Height(280));
+            foreach (string section in Settings.Sections)
             {
-                if (d.IsToggle) continue;
-                string text = edits[d.Key];
-                bool changed = text != d.Get();
+                int changedCount = 0;
+                foreach (SettingDef d in Settings.Defs)
+                    if (!d.IsToggle && d.Section == section && edits[d.Key] != d.Get()) changedCount++;
 
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent((changed ? "* " : "") + d.Label, d.Help),
-                    changed ? changedLabelStyle : cellStyle, GUILayout.Width(230));
-                edits[d.Key] = GUILayout.TextField(text, d.IsValid(text) ? GUI.skin.textField : badFieldStyle,
-                    GUILayout.Width(110));
-                GUILayout.Label(new GUIContent("default " + d.Default, d.Help), GUILayout.Width(130));
-                if (d.AffectsBands) GUILayout.Label(new GUIContent("(rebuilds bands)", d.Help));
-                GUILayout.EndHorizontal();
+                bool open = openSections.Contains(section);
+                string title = (open ? "-  " : "+  ") + section + (changedCount > 0 ? string.Format("  ({0} edited)", changedCount) : "");
+                if (GUILayout.Button(title, foldStyle))
+                {
+                    if (open) openSections.Remove(section);
+                    else openSections.Add(section);
+                }
+                if (!open) continue;
+
+                foreach (SettingDef d in Settings.Defs)
+                {
+                    if (d.IsToggle || d.Section != section) continue;
+                    string text = edits[d.Key];
+                    bool changed = text != d.Get();
+                    string tip = d.Help + "  (default " + d.Default + (d.AffectsBands ? "; rebuilds bands" : "") + ")";
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Space(12);
+                    GUILayout.Label(new GUIContent((changed ? "* " : "") + d.Label, tip),
+                        changed ? changedLabelStyle : cellStyle, GUILayout.Width(250));
+                    edits[d.Key] = GUILayout.TextField(text, d.IsValid(text) ? GUI.skin.textField : badFieldStyle,
+                        GUILayout.Width(100));
+                    GUILayout.EndHorizontal();
+                }
+                GUILayout.Space(4);
             }
             GUILayout.EndScrollView();
 
-            // Hovered row's help text. GUI.tooltip is only filled in during Repaint, so showing it
-            // directly would make the Layout and Repaint passes disagree about this label's size
-            // (it got squeezed into a one-letter-wide column). Latch it on Repaint and show it from
-            // the next frame on, in a fixed-height box.
-            GUILayout.Label(hoverHelp, helpStyle, GUILayout.Height(40), GUILayout.ExpandWidth(true));
-            if (Event.current.type == EventType.Repaint) hoverHelp = GUI.tooltip;
+            HoverHelp();
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button(new GUIContent("Apply", "Use these values now, without saving")))

@@ -6,8 +6,11 @@ namespace KesslerSymptoms
     /// <summary>What a tier does to a vessel when an encounter happens.</summary>
     public interface IEncounterEffect
     {
-        /// <summary>Apply the encounter and return a short description of what happened.</summary>
-        string Apply(Vessel vessel, int tier);
+        /// <summary>
+        /// Apply the encounter and return a short description of what happened. <paramref name="flow"/>
+        /// is the world direction the debris is travelling (inside a field), or null for any direction.
+        /// </summary>
+        string Apply(Vessel vessel, int tier, Vector3? flow);
     }
 
     /// <summary>
@@ -26,14 +29,15 @@ namespace KesslerSymptoms
             this.scale = scale;
         }
 
-        public string Apply(Vessel vessel, int tier)
+        public string Apply(Vessel vessel, int tier, Vector3? flow)
         {
             Part part;
             Vector3 point, normal;
-            if (!Encounters.PickImpactPoint(vessel, out part, out point, out normal))
+            if (!Encounters.PickImpactPoint(vessel, flow, out part, out point, out normal))
                 return "no part to hit";
 
             ImpactFx.Spawn(part, point, normal, scale);
+            ImpactMark.Spawn(part, point, normal, scale);
             Sfx.PlayAt(Sfx.Pick(sounds, Sfx.ImpactFallback), part.transform, point,
                 (float)Settings.PingVolume, Random.Range(0.9f, 1.15f));
 
@@ -80,23 +84,68 @@ namespace KesslerSymptoms
             { 3, new ImpactEffect(Sfx.HardImpacts, 2.2f) },
         };
 
-        /// <summary>Random part, then a random point on its surface (see PickSurfacePoint).</summary>
-        public static bool PickImpactPoint(Vessel vessel, out Part part, out Vector3 point, out Vector3 normal)
+        /// <summary>
+        /// Where a hit lands. With no <paramref name="flow"/>: a random part, random spot on it.
+        /// With a flow direction: shoot rays through the vessel from upstream and take the first
+        /// part each one meets, so the exposed side gets hit and parts behind others are shielded.
+        /// </summary>
+        public static bool PickImpactPoint(Vessel vessel, Vector3? flow, out Part part, out Vector3 point, out Vector3 normal)
         {
             part = null;
             point = normal = Vector3.zero;
             if (vessel.parts.Count == 0) return false;
 
+            if (flow.HasValue && RaycastFromUpstream(vessel, flow.Value, out part, out point, out normal))
+                return true;
+
             part = vessel.parts[Random.Range(0, vessel.parts.Count)];
-            PickSurfacePoint(part, out point, out normal);
+            PickSurfacePoint(part, flow.HasValue ? -flow.Value : (Vector3?)null, out point, out normal);
             return true;
         }
 
+        private static bool RaycastFromUpstream(Vessel vessel, Vector3 flow, out Part part, out Vector3 point, out Vector3 normal)
+        {
+            part = null;
+            point = normal = Vector3.zero;
+
+            Vector3 com = vessel.CoM;
+            float radius = 2f;
+            foreach (Part p in vessel.parts)
+                radius = Mathf.Max(radius, (p.transform.position - com).magnitude + 2f);
+
+            // Any two axes perpendicular to the flow, to scatter ray origins across the ship.
+            Vector3 side = Vector3.Cross(flow, Mathf.Abs(flow.y) < 0.9f ? Vector3.up : Vector3.right).normalized;
+            Vector3 up = Vector3.Cross(flow, side);
+
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                Vector2 disk = Random.insideUnitCircle * radius;
+                // A little angular spread so it isn't a perfectly parallel stream.
+                Vector3 dir = (flow + Random.insideUnitSphere * 0.15f).normalized;
+                Vector3 origin = com - dir * radius * 2f + side * disk.x + up * disk.y;
+
+                RaycastHit[] hits = Physics.RaycastAll(origin, dir, radius * 4f, ~0, QueryTriggerInteraction.Ignore);
+                RaycastHit? nearest = null;
+                foreach (RaycastHit h in hits)
+                    if (!nearest.HasValue || h.distance < nearest.Value.distance) nearest = h;
+                if (!nearest.HasValue) continue; // missed the ship
+
+                Part hitPart = nearest.Value.collider.GetComponentInParent<Part>();
+                if (hitPart == null || hitPart.vessel != vessel) continue; // something else took it
+                part = hitPart;
+                point = nearest.Value.point;
+                normal = nearest.Value.normal;
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>
-        /// Random point on a part's surface: cast a ray at one of its colliders from a random
-        /// direction outside it. Falls back to the part's origin.
+        /// Random point on a part's surface: cast a ray at one of its colliders from outside it,
+        /// from a random direction or roughly <paramref name="from"/> if given. Falls back to the
+        /// part's origin.
         /// </summary>
-        public static void PickSurfacePoint(Part part, out Vector3 point, out Vector3 normal)
+        public static void PickSurfacePoint(Part part, Vector3? from, out Vector3 point, out Vector3 normal)
         {
             List<Collider> colliders = new List<Collider>();
             foreach (Collider c in part.GetComponentsInChildren<Collider>())
@@ -109,7 +158,9 @@ namespace KesslerSymptoms
                 float reach = b.extents.magnitude + 1f;
                 for (int attempt = 0; attempt < 4; attempt++)
                 {
-                    Vector3 dir = Random.onUnitSphere;
+                    Vector3 dir = from.HasValue
+                        ? (from.Value.normalized + Random.insideUnitSphere * 0.6f).normalized
+                        : Random.onUnitSphere;
                     RaycastHit hit;
                     if (c.Raycast(new Ray(b.center + dir * reach, -dir), out hit, reach * 2f))
                     {
@@ -159,7 +210,7 @@ namespace KesslerSymptoms
         /// (debug buttons) skip the effect toggles and the alert cooldown but still require a
         /// loaded, off-rails vessel in flight.
         /// </summary>
-        public static bool Trigger(Vessel vessel, int tier, bool forced, bool alert = true)
+        public static bool Trigger(Vessel vessel, int tier, bool forced, bool alert = true, Vector3? flow = null)
         {
             string blocker = Blocker(vessel);
             if (blocker != null)
@@ -172,7 +223,7 @@ namespace KesslerSymptoms
             IEncounterEffect effect;
             if (!effects.TryGetValue(tier, out effect)) return false;
 
-            string result = effect.Apply(vessel, tier);
+            string result = effect.Apply(vessel, tier, flow);
             Log.Info(string.Format("Tier {0} encounter on {1}{2}: {3}",
                 tier, vessel.vesselName, forced ? " (forced)" : "", result));
             if (alert)
@@ -181,11 +232,11 @@ namespace KesslerSymptoms
         }
 
         /// <summary>Sound-only micro pelt somewhere on the vessel: quieter and higher than a hit.</summary>
-        public static void Pelt(Vessel vessel)
+        public static void Pelt(Vessel vessel, Vector3? flow = null)
         {
             Part part;
             Vector3 point, normal;
-            if (!PickImpactPoint(vessel, out part, out point, out normal)) return;
+            if (!PickImpactPoint(vessel, flow, out part, out point, out normal)) return;
             Sfx.PlayAt(Sfx.Pick(Sfx.LightImpacts, Sfx.ImpactFallback), part.transform, point,
                 (float)(Settings.PingVolume * Settings.PeltVolume) * Random.Range(0.6f, 1f),
                 Random.Range(1.3f, 1.8f));

@@ -3,8 +3,8 @@ using UnityEngine;
 namespace KesslerSymptoms
 {
     /// <summary>
-    /// Looping visuals and sound for a punctured tank: a vapour jet out of the hole plus a hiss,
-    /// both scaled by how fast it's leaking right now, so they fade as the leak seals.
+    /// Looping visuals and sound for a punctured tank: a layered vapour jet out of the hole plus
+    /// a hiss, all scaled by how fast it's leaking right now, so they fade as the leak seals.
     /// Owned by ModuleKesslerDamage; lives on a child object at the hole.
     /// </summary>
     public class LeakFx : MonoBehaviour
@@ -16,7 +16,11 @@ namespace KesslerSymptoms
 
         private static Material vapourMaterial;
 
-        private ParticleSystem ps;
+        // Three layers: a dense bright core jet, a wide slow plume billowing around it, and a
+        // few glinting frozen-propellant specks.
+        private ParticleSystem core;
+        private ParticleSystem plume;
+        private ParticleSystem frost;
         private AudioSource hiss;
         private float baseVolume;
 
@@ -28,10 +32,22 @@ namespace KesslerSymptoms
             go.transform.localRotation = Quaternion.LookRotation(localNormal);
 
             LeakFx fx = go.AddComponent<LeakFx>();
-            fx.ps = BuildJet(go);
+            fx.core = BuildLayer(Child(go, "Core"), 10f, 0.03f, new Vector2(0.4f, 1.0f), VapourMaterial,
+                new Color(0.95f, 0.97f, 1f, 0.75f), new Color(0.85f, 0.9f, 0.95f, 0.55f), 3f);
+            fx.plume = BuildLayer(Child(go, "Plume"), 35f, 0.08f, new Vector2(1.2f, 2.6f), VapourMaterial,
+                new Color(0.9f, 0.93f, 0.97f, 0.3f), new Color(0.8f, 0.83f, 0.88f, 0.15f), 4.5f);
+            fx.frost = BuildLayer(Child(go, "Frost"), 22f, 0.03f, new Vector2(0.6f, 1.6f), ImpactFx.SparkMaterial,
+                new Color(0.7f, 0.8f, 0.9f, 1f), new Color(0.5f, 0.6f, 0.7f, 1f), 1f);
             fx.hiss = BuildHiss(go, bigLeak);
             fx.baseVolume = bigLeak ? 0.12f : 1.0f; // the big leak recording is ~24 dB hotter; keep it only somewhat louder
             return fx;
+        }
+
+        private static GameObject Child(GameObject parent, string name)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent.transform, false);
+            return go;
         }
 
         /// <param name="ratePctPerMin">Current leak rate, percent of the tank per minute.</param>
@@ -39,11 +55,9 @@ namespace KesslerSymptoms
         {
             float k = Mathf.Clamp01((float)(ratePctPerMin / FullRatePctPerMin));
 
-            ParticleSystem.EmissionModule emission = ps.emission;
-            emission.rateOverTime = 10f + 110f * k;
-            ParticleSystem.MainModule main = ps.main;
-            main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f + 4f * k, 3f + 9f * k);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.05f + 0.1f * k, 0.12f + 0.25f * k);
+            Tune(core, 40f + 260f * k, 2f + 6f * k, 5f + 14f * k, 0.06f + 0.12f * k, 0.15f + 0.3f * k);
+            Tune(plume, 8f + 60f * k, 0.6f + 1.5f * k, 1.5f + 4f * k, 0.25f + 0.4f * k, 0.6f + 1.2f * k);
+            Tune(frost, 4f + 36f * k, 3f + 6f * k, 6f + 14f * k, 0.01f, 0.03f);
 
             if (hiss != null)
             {
@@ -52,7 +66,18 @@ namespace KesslerSymptoms
             }
         }
 
-        private static ParticleSystem BuildJet(GameObject go)
+        private static void Tune(ParticleSystem ps, float rate, float speedMin, float speedMax, float sizeMin, float sizeMax)
+        {
+            ParticleSystem.EmissionModule emission = ps.emission;
+            emission.rateOverTime = rate;
+            ParticleSystem.MainModule main = ps.main;
+            main.startSpeed = new ParticleSystem.MinMaxCurve(speedMin, speedMax);
+            main.startSize = new ParticleSystem.MinMaxCurve(sizeMin, sizeMax);
+        }
+
+        /// <param name="growth">How much each puff grows over its life (1 = not at all).</param>
+        private static ParticleSystem BuildLayer(GameObject go, float coneAngle, float radius, Vector2 lifetime,
+            Material material, Color colorA, Color colorB, float growth)
         {
             ParticleSystem ps = go.AddComponent<ParticleSystem>();
             ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -61,35 +86,47 @@ namespace KesslerSymptoms
             main.loop = true;
             main.playOnAwake = false;
             main.duration = 1f;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.4f);
-            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.92f, 0.95f, 1f, 0.55f), new Color(0.8f, 0.85f, 0.9f, 0.35f));
+            main.startLifetime = new ParticleSystem.MinMaxCurve(lifetime.x, lifetime.y);
+            main.startColor = new ParticleSystem.MinMaxGradient(colorA, colorB);
             main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
             main.gravityModifier = 0f;
             // Local space: the jet stays attached to the ship instead of being smeared by
             // KSP's moving reference frame at orbital speed.
             main.simulationSpace = ParticleSystemSimulationSpace.Local;
-            main.maxParticles = 400;
+            main.maxParticles = 800;
 
             ParticleSystem.ShapeModule shape = ps.shape;
             shape.shapeType = ParticleSystemShapeType.Cone;
-            shape.angle = 12f;
-            shape.radius = 0.03f;
+            shape.angle = coneAngle;
+            shape.radius = radius;
 
-            // Puffs expand and thin out as they leave the hole.
-            ParticleSystem.SizeOverLifetimeModule grow = ps.sizeOverLifetime;
-            grow.enabled = true;
-            grow.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.4f, 1f, 2.5f));
+            if (growth > 1f)
+            {
+                ParticleSystem.SizeOverLifetimeModule grow = ps.sizeOverLifetime;
+                grow.enabled = true;
+                grow.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f / growth, 1f, 1f));
+
+                // Puffs slow as they spread out.
+                ParticleSystem.LimitVelocityOverLifetimeModule drag = ps.limitVelocityOverLifetime;
+                drag.enabled = true;
+                drag.limit = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 20f, 1f, 1f));
+                drag.dampen = 0.08f;
+
+                ParticleSystem.RotationOverLifetimeModule spin = ps.rotationOverLifetime;
+                spin.enabled = true;
+                spin.z = new ParticleSystem.MinMaxCurve(-0.8f, 0.8f);
+            }
 
             ParticleSystem.ColorOverLifetimeModule fade = ps.colorOverLifetime;
             fade.enabled = true;
             Gradient g = new Gradient();
             g.SetKeys(
                 new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
-                new[] { new GradientAlphaKey(0.9f, 0f), new GradientAlphaKey(0.4f, 0.4f), new GradientAlphaKey(0f, 1f) });
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.5f, 0.45f), new GradientAlphaKey(0f, 1f) });
             fade.color = new ParticleSystem.MinMaxGradient(g);
 
             ParticleSystemRenderer r = go.GetComponent<ParticleSystemRenderer>();
-            r.material = VapourMaterial;
+            r.material = material;
             r.renderMode = ParticleSystemRenderMode.Billboard;
 
             ps.Play();
@@ -117,7 +154,7 @@ namespace KesslerSymptoms
         }
 
         /// <summary>Soft round alpha-blended puff, built once.</summary>
-        private static Material VapourMaterial
+        public static Material VapourMaterial
         {
             get
             {
