@@ -126,7 +126,8 @@ namespace KesslerSymptoms
                     return (heavy ? "big puncture in " : "punctured ") + title;
 
                 case Failure.BatteryShort:
-                    Sfx.PlayAtPart(part, Sfx.Pick(Sfx.Zaps, Sfx.ZapFallback), heavy ? 1f : 0.7f, Sfx.ImpactMuffleHz);
+                    // Lighter muffle than impacts: a zap is mostly high crackle, which the hull cutoff would erase.
+                    Sfx.PlayAtPart(part, Sfx.Pick(Sfx.Zaps, Sfx.ZapFallback), heavy ? 1f : 0.85f, 8000f);
                     if (heavy)
                     {
                         dmg.ShortBattery();
