@@ -74,6 +74,23 @@ namespace KesslerSymptoms
         public static double AlertCooldownSeconds = 30.0;
         public static double PingVolume = 1.0;
         public static double AlarmVolume = 0.7;
+        /// <summary>Impulse (tonne·m/s) pushed into the hit part, per tier. Tier 1 is harmless.</summary>
+        public static double Tier2Impulse = 0.3;
+        public static double Tier3Impulse = 1.5;
+
+        // --- Debris fields ---
+        /// <summary>Field chance = FieldChanceMax × density / (density + FieldHalfDensity).</summary>
+        public static double FieldChanceMax = 0.6;
+        public static double FieldHalfDensity = 10.0;
+        /// <summary>Field length range, in game seconds.</summary>
+        public static double FieldDurationMin = 8.0;
+        public static double FieldDurationMax = 20.0;
+        /// <summary>Mean game seconds between real tier hits inside a field.</summary>
+        public static double FieldSecondsPerHit = 2.5;
+        /// <summary>Sound-only micro pelts per game second inside a field.</summary>
+        public static double FieldPeltsPerSecond = 6.0;
+        /// <summary>Micro pelt volume as a fraction of PingVolume.</summary>
+        public static double PeltVolume = 0.35;
 
         /// <summary>Every tunable, in display order. Declared after the fields so defaults capture correctly.</summary>
         public static readonly List<SettingDef> Defs = new List<SettingDef>
@@ -111,6 +128,24 @@ namespace KesslerSymptoms
                 () => PingVolume, v => PingVolume = v, 0, 2),
             Dbl("AlarmVolume", "Alarm volume", "Volume of the impact alarm (x UI volume)",
                 () => AlarmVolume, v => AlarmVolume = v, 0, 2),
+            Dbl("Tier2Impulse", "Tier 2 impulse", "Push (tonne m/s) a tier 2 hit gives the part it strikes",
+                () => Tier2Impulse, v => Tier2Impulse = v, 0, 1000),
+            Dbl("Tier3Impulse", "Tier 3 impulse", "Push (tonne m/s) a tier 3 hit gives the part it strikes",
+                () => Tier3Impulse, v => Tier3Impulse = v, 0, 1000),
+            Dbl("FieldChanceMax", "Field chance max", "Highest chance (0-1) that an encounter is a debris field",
+                () => FieldChanceMax, v => FieldChanceMax = v, 0, 1),
+            Dbl("FieldHalfDensity", "Field half density", "Density at which field chance reaches half its max",
+                () => FieldHalfDensity, v => FieldHalfDensity = v, 0.01, 1e6),
+            Dbl("FieldDurationMin", "Field min length (s)", "Shortest debris field, game seconds",
+                () => FieldDurationMin, v => FieldDurationMin = v, 1, 3600),
+            Dbl("FieldDurationMax", "Field max length (s)", "Longest debris field, game seconds",
+                () => FieldDurationMax, v => FieldDurationMax = v, 1, 3600),
+            Dbl("FieldSecondsPerHit", "Field s per hit", "Average game seconds between real hits in a field",
+                () => FieldSecondsPerHit, v => FieldSecondsPerHit = v, 0.1, 600),
+            Dbl("FieldPeltsPerSecond", "Field pelts/s", "Sound-only micro pelts per game second in a field",
+                () => FieldPeltsPerSecond, v => FieldPeltsPerSecond = v, 0, 50),
+            Dbl("PeltVolume", "Pelt volume", "Micro pelt volume as a fraction of impact volume",
+                () => PeltVolume, v => PeltVolume = v, 0, 2),
             Dbl("ScanIntervalSeconds", "Rescan interval (s)", "Real-time seconds between debris scans",
                 () => ScanIntervalSeconds, v => ScanIntervalSeconds = (float)v, 0.5, 600),
             Int("BandsPerBody", "Bands per body", "Altitude bands generated around each body",
@@ -179,6 +214,23 @@ namespace KesslerSymptoms
             };
             d.Default = d.Get();
             return d;
+        }
+
+        /// <summary>Chance (0-1) that an encounter at this density is a debris field instead of a one-off.</summary>
+        public static double FieldChance(double density)
+        {
+            if (density <= 0) return 0;
+            return FieldChanceMax * density / (density + FieldHalfDensity);
+        }
+
+        public static double ImpulseFor(int tier)
+        {
+            switch (tier)
+            {
+                case 2: return Tier2Impulse;
+                case 3: return Tier3Impulse;
+                default: return 0;
+            }
         }
 
         /// <summary>Whether effects of this tier (1..3) may fire, honouring the master switch.</summary>

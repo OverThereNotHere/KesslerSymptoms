@@ -258,8 +258,15 @@ namespace KesslerSymptoms
                     EncounterScheduler.CurrentBand, EncounterScheduler.CurrentDensity,
                     tier, Encounters.TierNames[tier]), tierStyles[tier]);
                 GUILayout.Label(EncounterScheduler.Rolling
-                    ? string.Format("Rolling for impacts: ~{0:F1} per game hour", EncounterScheduler.CurrentHitsPerHour)
-                    : "Not rolling for impacts (clear band, tier disabled, or on rails).");
+                    ? string.Format("Rolling for encounters: ~{0:F1} per game hour, {1:P0} chance each is a field",
+                        EncounterScheduler.CurrentHitsPerHour, Settings.FieldChance(EncounterScheduler.CurrentDensity))
+                    : "Not rolling for encounters (clear band, tier disabled, or on rails).");
+            }
+            EncounterScheduler sched = EncounterScheduler.Instance;
+            if (sched != null && sched.Field != null)
+            {
+                GUILayout.Label(string.Format("In a tier {0} debris field: {1:F0} s left",
+                    sched.Field.Tier, sched.Field.EndUT - Planetarium.GetUniversalTime()), tierStyles[sched.Field.Tier]);
             }
 
             GUILayout.Space(8);
@@ -267,11 +274,23 @@ namespace KesslerSymptoms
             string blocker = Encounters.Blocker(FlightGlobals.ActiveVessel);
             GUI.enabled = blocker == null;
             GUILayout.BeginHorizontal();
+            GUILayout.Label("One-off", GUILayout.Width(70));
             for (int tier = 1; tier <= 3; tier++)
             {
                 if (GUILayout.Button("Tier " + tier))
                     Encounters.Trigger(FlightGlobals.ActiveVessel, tier, true);
             }
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Field", GUILayout.Width(70));
+            for (int tier = 1; tier <= 3; tier++)
+            {
+                if (GUILayout.Button("Tier " + tier) && sched != null)
+                    sched.StartField(tier, true);
+            }
+            GUI.enabled = sched != null && sched.Field != null;
+            if (GUILayout.Button("End field", GUILayout.Width(90))) sched.StopField();
+            GUI.enabled = blocker == null;
             GUILayout.EndHorizontal();
             GUI.enabled = true;
             GUILayout.Label(blocker != null

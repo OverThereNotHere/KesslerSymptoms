@@ -11,8 +11,8 @@ namespace KesslerSymptoms
     }
 
     /// <summary>
-    /// Harmless impact: sound + sparks + flash at a random spot on a random part.
-    /// This is all of tier 1; tiers 2 and 3 use a heavier version until they get real damage.
+    /// Impact: sound + sparks + flash at a random spot on a random part, plus a push into the
+    /// surface for tiers with an impulse set (tier 1 has none). Tiers 2 and 3 get real damage later.
     /// </summary>
     public class ImpactEffect : IEncounterEffect
     {
@@ -29,20 +29,58 @@ namespace KesslerSymptoms
         {
             Part part;
             Vector3 point, normal;
-            if (!PickImpactPoint(vessel, out part, out point, out normal))
+            if (!Encounters.PickImpactPoint(vessel, out part, out point, out normal))
                 return "no part to hit";
 
             ImpactFx.Spawn(part, point, normal, scale);
             Sfx.PlayAt(Sfx.Pick(sounds, Sfx.ImpactFallback), part.transform, point,
                 (float)Settings.PingVolume, Random.Range(0.9f, 1.15f));
-            return "impact on " + part.partInfo.title;
+
+            string result = "impact on " + part.partInfo.title;
+            double impulse = Settings.ImpulseFor(tier);
+            if (impulse > 0 && Push(part, point, -normal, (float)impulse))
+                result += string.Format(", {0:F2} t*m/s push", impulse);
+            return result;
         }
+
+        /// <summary>
+        /// Instant push at the impact point. Parts without their own rigidbody (physicsless
+        /// parts) pass it to the nearest parent that has one.
+        /// </summary>
+        private static bool Push(Part part, Vector3 point, Vector3 direction, float impulse)
+        {
+            Part p = part;
+            while (p != null && p.rb == null) p = p.parent;
+            if (p == null) return false;
+            p.rb.AddForceAtPosition(direction.normalized * impulse, point, ForceMode.Impulse);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Entry point for encounters. Holds one effect per tier and decides whether an encounter
+    /// is allowed. The EncounterScheduler and the Effects tab's force buttons both call Trigger.
+    /// </summary>
+    public static class Encounters
+    {
+        public static readonly string[] TierNames = { "Clear", "Sparse", "Dense", "Debris field" };
+
+        private static readonly Color AlertColor = new Color(1f, 0.45f, 0.2f);
+        private static float lastAlert = -1e6f;
+
+        private static readonly Dictionary<int, IEncounterEffect> effects = new Dictionary<int, IEncounterEffect>
+        {
+            { 1, new ImpactEffect(Sfx.LightImpacts, 1f) },
+            // Tiers 2/3: heavier visuals plus a push; part damage comes later.
+            { 2, new ImpactEffect(Sfx.HardImpacts, 1.6f) },
+            { 3, new ImpactEffect(Sfx.HardImpacts, 2.2f) },
+        };
 
         /// <summary>
         /// Random part, then a random point on its surface: cast a ray at one of its colliders
         /// from a random direction outside it. Falls back to the part's origin.
         /// </summary>
-        private static bool PickImpactPoint(Vessel vessel, out Part part, out Vector3 point, out Vector3 normal)
+        public static bool PickImpactPoint(Vessel vessel, out Part part, out Vector3 point, out Vector3 normal)
         {
             part = null;
             point = normal = Vector3.zero;
@@ -75,26 +113,6 @@ namespace KesslerSymptoms
             normal = Random.onUnitSphere;
             return true;
         }
-    }
-
-    /// <summary>
-    /// Entry point for encounters. Holds one effect per tier and decides whether an encounter
-    /// is allowed. The EncounterScheduler and the Effects tab's force buttons both call Trigger.
-    /// </summary>
-    public static class Encounters
-    {
-        public static readonly string[] TierNames = { "Clear", "Sparse", "Dense", "Debris field" };
-
-        private static readonly Color AlertColor = new Color(1f, 0.45f, 0.2f);
-        private static float lastAlert = -1e6f;
-
-        private static readonly Dictionary<int, IEncounterEffect> effects = new Dictionary<int, IEncounterEffect>
-        {
-            { 1, new ImpactEffect(Sfx.LightImpacts, 1f) },
-            // Placeholders: cosmetic only until tiers 2 and 3 get real damage.
-            { 2, new ImpactEffect(Sfx.HardImpacts, 1.6f) },
-            { 3, new ImpactEffect(Sfx.HardImpacts, 2.2f) },
-        };
 
         public static void Register(int tier, IEncounterEffect effect)
         {
@@ -111,11 +129,12 @@ namespace KesslerSymptoms
         }
 
         /// <summary>
-        /// Run a tier's effect on the vessel, then raise the impact alert. Forced encounters
+        /// Run a tier's effect on the vessel, then raise the impact alert unless
+        /// <paramref name="alert"/> is false (hits inside a debris field). Forced encounters
         /// (debug buttons) skip the effect toggles and the alert cooldown but still require a
         /// loaded, off-rails vessel in flight.
         /// </summary>
-        public static bool Trigger(Vessel vessel, int tier, bool forced)
+        public static bool Trigger(Vessel vessel, int tier, bool forced, bool alert = true)
         {
             string blocker = Blocker(vessel);
             if (blocker != null)
@@ -131,20 +150,33 @@ namespace KesslerSymptoms
             string result = effect.Apply(vessel, tier);
             Log.Info(string.Format("Tier {0} encounter on {1}{2}: {3}",
                 tier, vessel.vesselName, forced ? " (forced)" : "", result));
-            Alert(tier, forced);
+            if (alert)
+                Alert(string.Format("Debris impact! Tier {0}: {1}", tier, TierNames[tier]), forced);
             return true;
         }
 
-        /// <summary>Alarm + text for an impact, rate-limited by AlertCooldownSeconds.</summary>
-        private static void Alert(int tier, bool forced)
+        /// <summary>Sound-only micro pelt somewhere on the vessel: quieter and higher than a hit.</summary>
+        public static void Pelt(Vessel vessel)
+        {
+            Part part;
+            Vector3 point, normal;
+            if (!PickImpactPoint(vessel, out part, out point, out normal)) return;
+            Sfx.PlayAt(Sfx.Pick(Sfx.LightImpacts, Sfx.ImpactFallback), part.transform, point,
+                (float)(Settings.PingVolume * Settings.PeltVolume) * Random.Range(0.6f, 1f),
+                Random.Range(1.3f, 1.8f));
+        }
+
+        /// <summary>
+        /// Alarm + orange text, rate-limited by AlertCooldownSeconds unless
+        /// <paramref name="force"/> is set.
+        /// </summary>
+        public static void Alert(string text, bool force)
         {
             float now = Time.realtimeSinceStartup;
-            if (!forced && now - lastAlert < Settings.AlertCooldownSeconds) return;
+            if (!force && now - lastAlert < Settings.AlertCooldownSeconds) return;
             lastAlert = now;
 
-            ScreenMessages.PostScreenMessage(
-                string.Format("Debris impact! Tier {0}: {1}", tier, TierNames[tier]),
-                4f, ScreenMessageStyle.UPPER_CENTER, AlertColor);
+            ScreenMessages.PostScreenMessage(text, 4f, ScreenMessageStyle.UPPER_CENTER, AlertColor);
             Sfx.Play2D(Sfx.Get(Sfx.Alarm, Sfx.AlarmFallback), (float)Settings.AlarmVolume);
         }
     }

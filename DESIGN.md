@@ -45,6 +45,16 @@ runs the tier's `IEncounterEffect`. The Effects tab can force any tier for testi
 random (Poisson) with mean `HitsPerHourPerDensity × density` per hour. The hit uses the
 band's current tier. All knobs live in Settings.
 
+**One-off vs field.** Each encounter is a debris field with chance
+`FieldChanceMax × density / (density + FieldHalfDensity)`, otherwise a one-off impact.
+A field lasts `FieldDurationMin..Max` game seconds: real tier hits every ~`FieldSecondsPerHit`
+(no per-hit alarm), plus `FieldPeltsPerSecond` sound-only micro pelts (quieter, higher pitch).
+One alarm + text when it starts, text when it passes; it ends silently if the vessel goes on
+rails or you switch vessels. No new encounters roll during a field.
+
+**Impulse.** Tier 2/3 hits push the struck part inward at the impact point
+(`Tier2Impulse` / `Tier3Impulse`, tonne·m/s). Tier 1 never pushes.
+
 ### Tier 1: Sparse (implemented)
 
 - **Ping:** `litepelt` sound (pitch varied) + streaking sparks + brief light flash at a random

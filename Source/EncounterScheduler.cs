@@ -5,7 +5,8 @@ namespace KesslerSymptoms
 {
     /// <summary>
     /// Flight-scene loop for the active vessel: works out which band it's in, posts a text
-    /// warning when the debris tier rises, and rolls for random impacts while off rails.
+    /// warning when the debris tier rises, and rolls for random encounters while off rails.
+    /// Each encounter is either a one-off impact or, more likely in denser bands, a debris field.
     /// </summary>
     [KSPAddon(KSPAddon.Startup.Flight, false)]
     public class EncounterScheduler : MonoBehaviour
@@ -16,12 +17,18 @@ namespace KesslerSymptoms
 
         private static readonly Color WarningColor = new Color(1f, 0.85f, 0.3f);
 
+        public static EncounterScheduler Instance { get; private set; }
+
         // Live readout for the Effects tab.
         public static int CurrentBand { get; private set; }
         public static double CurrentDensity { get; private set; }
         public static int CurrentTier { get; private set; }
         public static double CurrentHitsPerHour { get; private set; }
         public static bool Rolling { get; private set; }
+
+        /// <summary>The field currently hitting the active vessel, or null.</summary>
+        public DebrisField Field { get; private set; }
+        private Vessel fieldVessel;
 
         private Vessel lastVessel;
         private int lastTier;
@@ -30,11 +37,13 @@ namespace KesslerSymptoms
 
         public void Start()
         {
+            Instance = this;
             CurrentBand = -1;
         }
 
         public void OnDestroy()
         {
+            if (Instance == this) Instance = null;
             CurrentBand = -1;
             CurrentDensity = 0;
             CurrentTier = 0;
@@ -42,8 +51,50 @@ namespace KesslerSymptoms
             Rolling = false;
         }
 
+        /// <summary>
+        /// Start a debris field on the active vessel, replacing any current one. Forced fields
+        /// (debug buttons) ignore the tier toggles. Returns false if the vessel can't be hit now.
+        /// </summary>
+        public bool StartField(int tier, bool forced)
+        {
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (Encounters.Blocker(v) != null) return false;
+            if (!forced && !Settings.TierEnabled(tier)) return false;
+
+            Field = new DebrisField(tier, forced, Planetarium.GetUniversalTime());
+            fieldVessel = v;
+            Encounters.Alert(string.Format("Debris field! Tier {0}: {1}", tier, Encounters.TierNames[tier]), true);
+            Log.Info(string.Format("Tier {0} debris field on {1}{2}, {3:F0} s",
+                tier, v.vesselName, forced ? " (forced)" : "", Field.EndUT - Planetarium.GetUniversalTime()));
+            return true;
+        }
+
+        /// <summary>End the current field early without the "passed" message (debug button).</summary>
+        public void StopField()
+        {
+            EndField(false);
+        }
+
+        private void EndField(bool passed)
+        {
+            if (passed)
+                ScreenMessages.PostScreenMessage("Debris field passed", 3f, ScreenMessageStyle.UPPER_CENTER, WarningColor);
+            Field = null;
+            fieldVessel = null;
+        }
+
         public void Update()
         {
+            // Fields tick every frame so their pelts can come faster than the band check.
+            if (Field != null)
+            {
+                Vessel fv = FlightGlobals.ActiveVessel;
+                if (fv != fieldVessel || Encounters.Blocker(fv) != null)
+                    EndField(false);
+                else if (!Field.Tick(fv, Planetarium.GetUniversalTime()))
+                    EndField(true);
+            }
+
             if (Time.realtimeSinceStartup < nextCheck) return;
             nextCheck = Time.realtimeSinceStartup + CheckInterval;
 
@@ -94,9 +145,14 @@ namespace KesslerSymptoms
             }
             double dt = Math.Min(ut - lastUT, MaxStepSeconds);
             lastUT = ut;
+            if (Field != null) return; // one encounter at a time
 
             double perSecond = CurrentHitsPerHour / 3600.0;
-            if (UnityEngine.Random.value < 1.0 - Math.Exp(-perSecond * dt))
+            if (UnityEngine.Random.value >= 1.0 - Math.Exp(-perSecond * dt)) return;
+
+            if (UnityEngine.Random.value < Settings.FieldChance(density))
+                StartField(tier, false);
+            else
                 Encounters.Trigger(v, tier, false);
         }
     }
