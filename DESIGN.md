@@ -82,6 +82,32 @@ Fields default to at most 20 s so the lock doesn't drag on (`FieldDurationMax`, 
   or switching to a vessel inside it). Crossing between same-tier bands stays quiet.
 - **Sounds:** `Sounds/litepelt1-2`, `hardpelt1-2`, `alert` (mono WAV). Stock fallbacks if missing.
 
+### Tier 2: Dense (spec, decided 2026-10-02)
+
+Damage lands on **the part that got hit** (the same random part the sparks hit), with a
+per-part-type chance. Every real hit can damage, including each hit inside a field.
+Tier 2/3 already push the part and drop you out of warp.
+
+- **Deployables** (solar panels, antennas, radiators): break with stock breakage
+  (`breakPanels`), **extended or retracted**. Chance `Tier2BreakChance` (default 0.35).
+- **Tank puncture (rare):** chance `Tier2PunctureChance` (default 0.05) when the hit part holds
+  leakable resources (density > 0 and flowable: LF, Ox, Mono, Xenon, modded fluids; not
+  SolidFuel, Ablator, Ore, EC).
+  - Drains **only the punctured tank**.
+  - **Self-sealing:** leak rate starts at a random fraction of capacity per minute and decays
+    exponentially (`LeakRateMin..Max` %/min, `LeakSealHalfLifeMinutes`), so total loss is
+    bounded (default ~5–20%).
+  - **Tiny thrust** at the hole, opposite the leak direction, scaled by mass flow.
+  - Computed in closed form from UT, so it's correct through warp and across unload/reload.
+- **Notification:** screen message naming the part, the part glows red for a few seconds,
+  and the alarm plays (ignoring the cooldown). Dropping out of warp already happens for tier 2.
+- **Repair:** Engineer on EVA, free (no kits). Our module offers *Repair* for broken
+  deployables (bypassing stock's kit requirement) and *Patch leak* for punctures. Note:
+  `noKits.cfg` sets `repairKitsRequired`, which no stock module reads (the real field is
+  internal), so free repair has to be done in code.
+- **Persistence:** a custom PartModule (`ModuleKesslerDamage`, added by an MM patch to parts
+  with deployables or leakable resources) stores leak state in the save.
+
 ## Milestones
 
 1. ~~Band tracking + debug window~~ done. Debug / Effects / Settings tabs.
