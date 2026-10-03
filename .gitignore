@@ -1,3 +1,9 @@
 Plugins/*.dll
 Plugins/*.pdb
 Plugins/*.mdb
+
+# Local-only docs and tooling
+idea.md
+DESIGN.md
+build.sh
+insert glp 3 here
