@@ -5,6 +5,5 @@ Plugins/*.mdb
 # Local-only docs and tooling
 idea.md
 DESIGN.md
-build.sh
 insert glp 3 here
 PluginData/settings.cfg
