@@ -71,12 +71,15 @@ switched off entirely.
 ## Installation
 
 1. Install the requirements above.
-2. Copy the `KesslerSymptoms` folder into your KSP `GameData` folder, so you end up with
+2. Download `KesslerSymptoms-<version>.zip` from the
+   [releases page](https://github.com/OverThereNotHere/KesslerSymptoms/releases) and extract
+   it into your KSP folder, so you end up with
    `GameData/KesslerSymptoms/Plugins/KesslerSymptoms.dll`.
 3. Start the game. Existing saves work; vessels already in flight pick up the damage module
    on load.
 
-The `Source` folder isn't needed to play.
+If you're installing from a copy of this repository instead, the `Source` folder and build
+scripts aren't needed to play.
 
 ## Using it
 
@@ -106,6 +109,8 @@ It finds the KSP install two folders up (override with `KSP_ROOT=/path/to/KSP ./
 picks the right `Managed` folder for Linux, Windows or macOS, and writes
 `Plugins/KesslerSymptoms.dll`. Toolbar Controller and Click Through Blocker need to be
 installed in the same `GameData`, since the build references them.
+
+`./package.sh` builds fresh and zips a release into `dist/`, containing only what players need.
 
 ## License
 
