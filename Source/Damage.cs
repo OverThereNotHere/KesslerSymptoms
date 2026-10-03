@@ -45,7 +45,19 @@ namespace KesslerSymptoms
                 return false;
             }
             Announce(dp.part, string.Format("Debris broke the {0}!", dp.part.partInfo.title));
+            AddBreakSpike(dp.part);
             return true;
+        }
+
+        /// <summary>A broken deployable sheds fragments: a smaller version of an explosion spike.</summary>
+        private static void AddBreakSpike(Part part)
+        {
+            Vessel v = part.vessel;
+            KesslerScenario scn = KesslerScenario.Instance;
+            if (scn == null || v == null || v.situation != Vessel.Situations.ORBITING || Settings.BreakSpike <= 0) return;
+
+            CelestialBody body = v.mainBody;
+            scn.AddSpike(body, (part.transform.position - body.position).magnitude, Settings.BreakSpike);
         }
 
         private static void Puncture(ModuleKesslerDamage dmg, Vector3 point, Vector3 normal)

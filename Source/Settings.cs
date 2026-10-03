@@ -73,6 +73,8 @@ namespace KesslerSymptoms
         public static double ExplosionSpike = 0.5;
         /// <summary>Half-life of an explosion spike, in game days (6 h Kerbin / 24 h Earth calendar).</summary>
         public static double ExplosionHalfLifeDays = 30.0;
+        /// <summary>Density added when debris breaks a panel/antenna/radiator in orbit (smaller than a part dying).</summary>
+        public static double BreakSpike = 0.2;
 
         // --- Tiers (density thresholds) ---
         public static double Tier1At = 2.0;
@@ -143,6 +145,9 @@ namespace KesslerSymptoms
             Dbl("ExplosionHalfLifeDays", "Spike half-life (days)",
                 "Game days for an explosion spike to fade to half",
                 () => ExplosionHalfLifeDays, v => ExplosionHalfLifeDays = v, 0.01, 100000),
+            Dbl("BreakSpike", "Break spike",
+                "Density added where debris breaks a panel, antenna or radiator in orbit (fragments)",
+                () => BreakSpike, v => BreakSpike = v, 0, 100),
             Dbl("Tier1At", "Tier 1 at density", "Sparse: micrometeorite pings",
                 () => Tier1At, v => Tier1At = v, 0, 1e6),
             Dbl("Tier2At", "Tier 2 at density", "Dense: panels and antennas can break",
