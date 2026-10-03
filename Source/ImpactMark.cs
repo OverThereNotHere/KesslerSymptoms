@@ -6,13 +6,19 @@ namespace KesslerSymptoms
     /// <summary>
     /// A small scorch/pit mark stuck to the hull where a hit landed, fading out over
     /// MarkFadeSeconds. Not a true decal (KSP has no decal system): a flat textured quad a few
-    /// millimetres above the surface, which reads fine at impact size. Not saved; capped in count.
+    /// millimetres above the surface, attached to the exact collider that was hit so it moves
+    /// (and breaks off) with that piece, and shrunk until its corners sit on the surface so it
+    /// doesn't hover over curves. Not saved; capped in count.
     /// </summary>
     public class ImpactMark : MonoBehaviour
     {
         private const int MaxMarks = 40;
         /// <summary>Fraction of the lifetime spent at full strength before fading starts.</summary>
         private const float HoldFraction = 0.2f;
+        /// <summary>Largest gap (m) allowed between a mark's corner and the surface under it.</summary>
+        private const float MaxCornerGap = 0.012f;
+        /// <summary>Smallest a mark may shrink to before it's not worth showing.</summary>
+        private const float MinSize = 0.04f;
 
         private static readonly LinkedList<ImpactMark> live = new LinkedList<ImpactMark>();
         private static Mesh quad;
@@ -24,9 +30,15 @@ namespace KesslerSymptoms
         private LinkedListNode<ImpactMark> node;
 
         /// <param name="scale">Same scale as the impact's sparks: 1 = tier 1, larger = heavier hits.</param>
-        public static void Spawn(Part part, Vector3 point, Vector3 normal, float scale)
+        /// <param name="surface">Collider that was hit; the mark sticks to it. Null: the part itself.</param>
+        public static void Spawn(Part part, Collider surface, Vector3 point, Vector3 normal, float scale)
         {
             if (!Settings.ImpactMarksEnabled || Settings.MarkFadeSeconds <= 0) return;
+
+            Quaternion rotation = Quaternion.LookRotation(normal) * Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
+            float size = Random.Range(0.06f, 0.11f) * scale * scale; // tier 3 marks come out ~5x a ping's
+            if (surface != null) size = FitToSurface(surface, point, normal, rotation, size);
+            if (size < MinSize) return;
 
             while (live.Count >= MaxMarks)
             {
@@ -38,11 +50,13 @@ namespace KesslerSymptoms
             }
 
             GameObject go = new GameObject("KesslerSymptoms_Mark");
-            go.transform.SetParent(part.transform, false);
+            Transform parent = surface != null ? surface.transform : part.transform;
+            go.transform.SetParent(parent, false);
             go.transform.position = point + normal * 0.004f; // just above the hull: no z-fighting
-            go.transform.rotation = Quaternion.LookRotation(normal) * Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
-            float size = Random.Range(0.06f, 0.11f) * scale * scale; // tier 3 marks come out ~5x a ping's
-            go.transform.localScale = new Vector3(size, size, size);
+            go.transform.rotation = rotation;
+            // World size regardless of how the parent is scaled.
+            Vector3 ps = parent.lossyScale;
+            go.transform.localScale = new Vector3(size / Mathf.Abs(ps.x), size / Mathf.Abs(ps.y), size / Mathf.Abs(ps.z));
 
             go.AddComponent<MeshFilter>().sharedMesh = Quad;
             MeshRenderer r = go.AddComponent<MeshRenderer>();
@@ -54,6 +68,37 @@ namespace KesslerSymptoms
             r.sharedMaterial = mark.material;
             mark.lifetime = (float)Settings.MarkFadeSeconds;
             mark.node = live.AddLast(mark);
+        }
+
+        /// <summary>
+        /// Shrink the mark until all four corners have the surface within MaxCornerGap under them.
+        /// Flat areas keep the full size; tight curves and edges get smaller marks.
+        /// </summary>
+        private static float FitToSurface(Collider surface, Vector3 point, Vector3 normal, Quaternion rotation, float size)
+        {
+            Vector3 right = rotation * Vector3.right;
+            Vector3 up = rotation * Vector3.up;
+            for (int attempt = 0; attempt < 5 && size >= MinSize; attempt++)
+            {
+                if (CornersFit(surface, point, normal, right, up, size * 0.5f)) return size;
+                size *= 0.7f;
+            }
+            return CornersFit(surface, point, normal, right, up, size * 0.5f) ? size : 0f;
+        }
+
+        private static bool CornersFit(Collider surface, Vector3 point, Vector3 normal, Vector3 right, Vector3 up, float half)
+        {
+            const float probe = 0.25f; // start each probe this far above the mark's plane
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 corner = point + right * (i < 2 ? -half : half) + up * (i % 2 == 0 ? -half : half);
+                RaycastHit hit;
+                if (!surface.Raycast(new Ray(corner + normal * probe, -normal), out hit, probe + MaxCornerGap))
+                    return false; // corner hangs over an edge or the surface curves away
+                if (Mathf.Abs(hit.distance - probe) > MaxCornerGap)
+                    return false;
+            }
+            return true;
         }
 
         public void Update()

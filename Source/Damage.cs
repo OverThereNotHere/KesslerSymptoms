@@ -14,14 +14,15 @@ namespace KesslerSymptoms
 
         /// <summary>
         /// Roll damage for a hit on <paramref name="part"/>. Returns a short description for the
-        /// log, or null if nothing broke. Needs the vessel in physics (stock won't break packed parts).
+        /// log, or null if nothing broke. Panels only break in physics (stock refuses on packed
+        /// parts, e.g. mid-warp with warp drop-out off); punctures can happen either way.
         /// </summary>
         public static string TryDamage(Part part, Vector3 point, Vector3 normal, int tier)
         {
-            if (tier < 2 || part.packed) return null;
+            if (tier < 2) return null;
 
             ModuleDeployablePart dp = part.FindModuleImplementing<ModuleDeployablePart>();
-            if (dp != null && dp.deployState != ModuleDeployablePart.DeployState.BROKEN &&
+            if (dp != null && !part.packed && dp.deployState != ModuleDeployablePart.DeployState.BROKEN &&
                 Random.value < Settings.Tier2BreakChance)
             {
                 if (Break(dp)) return "broke " + part.partInfo.title;

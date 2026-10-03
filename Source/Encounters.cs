@@ -33,13 +33,14 @@ namespace KesslerSymptoms
         {
             Part part;
             Vector3 point, normal;
-            if (!Encounters.PickImpactPoint(vessel, flow, out part, out point, out normal))
+            Collider surface;
+            if (!Encounters.PickImpactPoint(vessel, flow, out part, out point, out normal, out surface))
                 return "no part to hit";
 
             ImpactFx.Spawn(part, point, normal, scale);
-            ImpactMark.Spawn(part, point, normal, scale);
+            ImpactMark.Spawn(part, surface, point, normal, scale);
             Sfx.PlayAt(Sfx.Pick(sounds, Sfx.ImpactFallback), part.transform, point,
-                (float)Settings.PingVolume, Random.Range(0.9f, 1.15f));
+                (float)Settings.PingVolume, Random.Range(0.9f, 1.15f), Sfx.ImpactMuffleHz);
 
             string result = "impact on " + part.partInfo.title;
             double impulse = Settings.ImpulseFor(tier);
@@ -88,24 +89,30 @@ namespace KesslerSymptoms
         /// Where a hit lands. With no <paramref name="flow"/>: a random part, random spot on it.
         /// With a flow direction: shoot rays through the vessel from upstream and take the first
         /// part each one meets, so the exposed side gets hit and parts behind others are shielded.
+        /// <paramref name="surface"/> is the collider that was hit (null if none was), so effects
+        /// can stick to the exact moving piece, e.g. a solar panel blade rather than its base.
         /// </summary>
-        public static bool PickImpactPoint(Vessel vessel, Vector3? flow, out Part part, out Vector3 point, out Vector3 normal)
+        public static bool PickImpactPoint(Vessel vessel, Vector3? flow, out Part part, out Vector3 point,
+            out Vector3 normal, out Collider surface)
         {
             part = null;
+            surface = null;
             point = normal = Vector3.zero;
             if (vessel.parts.Count == 0) return false;
 
-            if (flow.HasValue && RaycastFromUpstream(vessel, flow.Value, out part, out point, out normal))
+            if (flow.HasValue && RaycastFromUpstream(vessel, flow.Value, out part, out point, out normal, out surface))
                 return true;
 
             part = vessel.parts[Random.Range(0, vessel.parts.Count)];
-            PickSurfacePoint(part, flow.HasValue ? -flow.Value : (Vector3?)null, out point, out normal);
+            surface = PickSurfacePoint(part, flow.HasValue ? -flow.Value : (Vector3?)null, out point, out normal);
             return true;
         }
 
-        private static bool RaycastFromUpstream(Vessel vessel, Vector3 flow, out Part part, out Vector3 point, out Vector3 normal)
+        private static bool RaycastFromUpstream(Vessel vessel, Vector3 flow, out Part part, out Vector3 point,
+            out Vector3 normal, out Collider surface)
         {
             part = null;
+            surface = null;
             point = normal = Vector3.zero;
 
             Vector3 com = vessel.CoM;
@@ -135,6 +142,7 @@ namespace KesslerSymptoms
                 part = hitPart;
                 point = nearest.Value.point;
                 normal = nearest.Value.normal;
+                surface = nearest.Value.collider;
                 return true;
             }
             return false;
@@ -143,9 +151,9 @@ namespace KesslerSymptoms
         /// <summary>
         /// Random point on a part's surface: cast a ray at one of its colliders from outside it,
         /// from a random direction or roughly <paramref name="from"/> if given. Falls back to the
-        /// part's origin.
+        /// part's origin. Returns the collider that was hit, or null.
         /// </summary>
-        public static void PickSurfacePoint(Part part, Vector3? from, out Vector3 point, out Vector3 normal)
+        public static Collider PickSurfacePoint(Part part, Vector3? from, out Vector3 point, out Vector3 normal)
         {
             List<Collider> colliders = new List<Collider>();
             foreach (Collider c in part.GetComponentsInChildren<Collider>())
@@ -166,13 +174,14 @@ namespace KesslerSymptoms
                     {
                         point = hit.point;
                         normal = hit.normal;
-                        return;
+                        return c;
                     }
                 }
             }
 
             point = part.transform.position;
             normal = Random.onUnitSphere;
+            return null;
         }
 
         public static void Register(int tier, IEncounterEffect effect)
@@ -236,10 +245,11 @@ namespace KesslerSymptoms
         {
             Part part;
             Vector3 point, normal;
-            if (!PickImpactPoint(vessel, flow, out part, out point, out normal)) return;
+            Collider surface;
+            if (!PickImpactPoint(vessel, flow, out part, out point, out normal, out surface)) return;
             Sfx.PlayAt(Sfx.Pick(Sfx.LightImpacts, Sfx.ImpactFallback), part.transform, point,
                 (float)(Settings.PingVolume * Settings.PeltVolume) * Random.Range(0.6f, 1f),
-                Random.Range(1.3f, 1.8f));
+                Random.Range(1.3f, 1.8f), Sfx.PeltMuffleHz);
         }
 
         /// <summary>

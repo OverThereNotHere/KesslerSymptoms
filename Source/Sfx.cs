@@ -30,18 +30,43 @@ namespace KesslerSymptoms
             "KesslerSymptoms/Sounds/leak2",
         };
         public const string BigLeak = "KesslerSymptoms/Sounds/leak3";
+        /// <summary>Metal snapping when something breaks: stock's strut-disconnect sound.</summary>
+        public static readonly string[] Snaps = { "Squad/Sounds/ksp1_strunts_disconnect_v3_pitched2" };
+        /// <summary>Brittle cell shattering, layered on a snap when a solar panel breaks.</summary>
+        public static readonly string[] Shatters = { "KesslerSymptoms/Sounds/glass1" };
         /// <summary>Alarm for a part actually being damaged (distinct from the impact alert).</summary>
         public const string PartAlarm = "KesslerSymptoms/Sounds/partalarm";
         public const string Alarm = "KesslerSymptoms/Sounds/alert";
         public const string AlarmFallback = "Squad/Alarms/Sounds/ComputerShort";
 
-        /// <summary>A random clip from the set, or from the fallback set if none of ours loaded.</summary>
+        /// <summary>
+        /// Low-pass cutoffs (Hz) for sounds heard through the hull: in vacuum, impacts and leaks
+        /// only reach the crew through the structure, which dulls the high end.
+        /// </summary>
+        public const float ImpactMuffleHz = 4500f;
+        public const float PeltMuffleHz = 3500f;
+        public const float LeakMuffleHz = 3000f;
+
+        /// <summary>
+        /// A random clip from those in the set that actually exist, or from the fallback set if
+        /// none do. So a set can list more files than are installed yet.
+        /// </summary>
         public static AudioClip Pick(string[] urls, string[] fallback)
         {
-            AudioClip clip = GameDatabase.Instance.GetAudioClip(urls[Random.Range(0, urls.Length)]);
-            if (clip == null && fallback != null)
-                clip = GameDatabase.Instance.GetAudioClip(fallback[Random.Range(0, fallback.Length)]);
+            AudioClip clip = PickExisting(urls);
+            if (clip == null && fallback != null) clip = PickExisting(fallback);
             return clip;
+        }
+
+        private static AudioClip PickExisting(string[] urls)
+        {
+            int start = Random.Range(0, urls.Length);
+            for (int i = 0; i < urls.Length; i++)
+            {
+                AudioClip clip = GameDatabase.Instance.GetAudioClip(urls[(start + i) % urls.Length]);
+                if (clip != null) return clip;
+            }
+            return null;
         }
 
         public static AudioClip Get(string url, string fallback)
@@ -56,7 +81,8 @@ namespace KesslerSymptoms
         /// Play a clip from a point that follows <paramref name="parent"/>. Half-3D so it's
         /// positioned on the ship but still audible from a zoomed-out camera.
         /// </summary>
-        public static void PlayAt(AudioClip clip, Transform parent, Vector3 worldPos, float volume, float pitch)
+        /// <param name="lowPassHz">If above 0, muffle above this frequency: sound heard through the hull.</param>
+        public static void PlayAt(AudioClip clip, Transform parent, Vector3 worldPos, float volume, float pitch, float lowPassHz = 0f)
         {
             if (clip == null) return;
             GameObject go = new GameObject("KesslerSymptoms_Sfx");
@@ -72,8 +98,24 @@ namespace KesslerSymptoms
             src.minDistance = 15f;
             src.maxDistance = 1000f;
             src.dopplerLevel = 0f;
+            if (lowPassHz > 0f) go.AddComponent<AudioLowPassFilter>().cutoffFrequency = lowPassHz;
             src.Play();
             Object.Destroy(go, clip.length / Mathf.Max(0.1f, pitch) + 0.1f);
+        }
+
+        /// <summary>
+        /// Something on <paramref name="part"/> just broke: a muffled metal snap, plus faint
+        /// shattering for solar panels. Muffled because in vacuum the only way to hear it is
+        /// through the structure, which loses the high end.
+        /// </summary>
+        public static void PlayBreak(Part part, bool brittle)
+        {
+            Vector3 pos = part.transform.position;
+            PlayAt(Pick(Snaps, null), part.transform, pos,
+                (float)Settings.PingVolume * 0.8f, Random.Range(0.9f, 1.2f), 2500f);
+            if (brittle)
+                PlayAt(Pick(Shatters, null), part.transform, pos,
+                    (float)Settings.PingVolume * 0.45f, Random.Range(0.95f, 1.15f), 4000f);
         }
 
         private static AudioSource source2D;

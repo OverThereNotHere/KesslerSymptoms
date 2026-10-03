@@ -39,7 +39,9 @@ namespace KesslerSymptoms
             fx.frost = BuildLayer(Child(go, "Frost"), 22f, 0.03f, new Vector2(0.6f, 1.6f), ImpactFx.SparkMaterial,
                 new Color(0.7f, 0.8f, 0.9f, 1f), new Color(0.5f, 0.6f, 0.7f, 1f), 1f);
             fx.hiss = BuildHiss(go, bigLeak);
-            fx.baseVolume = bigLeak ? 0.12f : 1.0f; // the big leak recording is ~24 dB hotter; keep it only somewhat louder
+            // The big leak recording is ~24 dB hotter; keep it only somewhat louder. Both a bit
+            // above the impacts, since the low-pass below takes some loudness away.
+            fx.baseVolume = bigLeak ? 0.17f : 1.4f;
             return fx;
         }
 
@@ -149,6 +151,7 @@ namespace KesslerSymptoms
             src.maxDistance = 600f;
             src.dopplerLevel = 0f;
             src.time = Random.Range(0f, clip.length); // don't start every leak at the same spot
+            go.AddComponent<AudioLowPassFilter>().cutoffFrequency = Sfx.LeakMuffleHz;
             src.Play();
             return src;
         }

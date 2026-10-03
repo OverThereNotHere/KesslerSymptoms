@@ -277,10 +277,13 @@ namespace KesslerSymptoms
                 GUILayout.Label(string.Format("Band {0}, density {1:F2}, tier {2} ({3})",
                     EncounterScheduler.CurrentBand, EncounterScheduler.CurrentDensity,
                     tier, Encounters.TierNames[tier]), tierStyles[tier]);
+                string rate = Settings.ChanceEncounters
+                    ? string.Format("{0:P1} per {1:F0} s check (~{2:F1}/h)", EncounterScheduler.CurrentCheckChance,
+                        Settings.ChanceCheckSeconds, EncounterScheduler.CurrentHitsPerHour)
+                    : string.Format("~{0:F1} encounters/game hour", EncounterScheduler.CurrentHitsPerHour);
                 GUILayout.Label(EncounterScheduler.Rolling
-                    ? string.Format("~{0:F1} encounters/game hour, {1:P0} fields",
-                        EncounterScheduler.CurrentHitsPerHour, Settings.FieldChance(EncounterScheduler.CurrentDensity))
-                    : "Not rolling (clear band, tier off, or on rails)");
+                    ? string.Format("{0}, {1:P0} fields", rate, Settings.FieldChance(EncounterScheduler.CurrentDensity))
+                    : "Not rolling (clear band, effects off, or on rails)");
             }
             EncounterScheduler sched = EncounterScheduler.Instance;
             if (sched != null && sched.Field != null)

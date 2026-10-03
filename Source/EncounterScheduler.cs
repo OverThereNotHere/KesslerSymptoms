@@ -31,7 +31,10 @@ namespace KesslerSymptoms
         public static int CurrentBand { get; private set; }
         public static double CurrentDensity { get; private set; }
         public static int CurrentTier { get; private set; }
+        /// <summary>Average encounters per game hour right now (either mode).</summary>
         public static double CurrentHitsPerHour { get; private set; }
+        /// <summary>Chance mode: chance per check right now.</summary>
+        public static double CurrentCheckChance { get; private set; }
         public static bool Rolling { get; private set; }
 
         /// <summary>The field currently hitting the active vessel, or null.</summary>
@@ -55,6 +58,8 @@ namespace KesslerSymptoms
         private double lastUT = -1;
         private float nextCheck;
         private float nextWarpLockMessage;
+        /// <summary>Chance mode: game seconds accumulated toward the next check.</summary>
+        private double checkTimer;
 
         public void Start()
         {
@@ -84,7 +89,7 @@ namespace KesslerSymptoms
             if (Encounters.Blocker(v) != null) return false;
             if (!forced && !Settings.TierEnabled(tier)) return false;
 
-            if (v.packed && tier >= 2)
+            if (v.packed && tier >= 2 && Settings.WarpDropOut)
             {
                 pending = new Pending
                 {
@@ -113,7 +118,7 @@ namespace KesslerSymptoms
         private void StartField(Vessel v, int tier, bool forced)
         {
             // Only a tier 1 field arriving mid-warp leaves the warp alone.
-            bool blocksWarp = !(v.packed && tier == 1);
+            bool blocksWarp = Settings.WarpDropOut && !(v.packed && tier == 1);
             if (fieldFx != null) fieldFx.End(); // a forced field can replace a running one
             Field = new DebrisField(tier, forced, Planetarium.GetUniversalTime(), blocksWarp);
             fieldVessel = v;
@@ -211,7 +216,18 @@ namespace KesslerSymptoms
             CurrentBand = band;
             CurrentDensity = density;
             CurrentTier = tier;
-            CurrentHitsPerHour = tier >= 1 ? Settings.HitsPerHourPerDensity * density : 0;
+            if (Settings.ChanceEncounters)
+            {
+                CurrentCheckChance = Settings.CheckChance(density);
+                CurrentHitsPerHour = CurrentCheckChance <= 0 ? 0
+                    : CurrentCheckChance >= 1 ? 3600.0 / Settings.ChanceCheckSeconds
+                    : -Math.Log(1.0 - CurrentCheckChance) * 3600.0 / Settings.ChanceCheckSeconds;
+            }
+            else
+            {
+                CurrentCheckChance = 0;
+                CurrentHitsPerHour = tier >= 1 ? Settings.HitsPerHourPerDensity * density : 0;
+            }
 
             // Entering more cluttered space: text only. Crossing between bands of the same
             // tier stays quiet.
@@ -225,8 +241,9 @@ namespace KesslerSymptoms
             }
             lastTier = tier;
 
-            // Encounter rolls: Poisson arrivals over the game time since the last check.
-            Rolling = tier >= 1 && Settings.TierEnabled(tier) && Encounters.Blocker(v) == null;
+            // Encounter rolls. Any tier 1+ band rolls (the picked tier is checked against its
+            // toggle in Request, since lower tiers can come up in higher bands).
+            Rolling = tier >= 1 && Settings.EffectsEnabled && Encounters.Blocker(v) == null;
             double ut = Planetarium.GetUniversalTime();
             if (!Rolling || lastUT < 0)
             {
@@ -235,12 +252,27 @@ namespace KesslerSymptoms
             }
             double dt = Math.Min(ut - lastUT, v.packed ? MaxWarpStepSeconds : MaxStepSeconds);
             lastUT = ut;
+
+            double chanceAny;
+            if (Settings.ChanceEncounters)
+            {
+                // Every check that came due since last time (several per frame in warp) is
+                // folded into one roll: chance at least one of them hits.
+                checkTimer += dt;
+                int checks = (int)Math.Floor(checkTimer / Settings.ChanceCheckSeconds);
+                checkTimer -= checks * Settings.ChanceCheckSeconds;
+                chanceAny = checks > 0 ? 1.0 - Math.Pow(1.0 - CurrentCheckChance, checks) : 0;
+            }
+            else
+            {
+                // Poisson arrivals over the game time since the last check.
+                chanceAny = 1.0 - Math.Exp(-CurrentHitsPerHour / 3600.0 * dt);
+            }
+
             if (Field != null || pending != null) return; // one encounter at a time
+            if (UnityEngine.Random.value >= chanceAny) return;
 
-            double perSecond = CurrentHitsPerHour / 3600.0;
-            if (UnityEngine.Random.value >= 1.0 - Math.Exp(-perSecond * dt)) return;
-
-            Request(tier, UnityEngine.Random.value < Settings.FieldChance(density), false);
+            Request(Settings.PickEncounterTier(tier), UnityEngine.Random.value < Settings.FieldChance(density), false);
         }
     }
 }

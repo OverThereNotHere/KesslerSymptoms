@@ -43,12 +43,16 @@ namespace KesslerSymptoms
         public static bool Tier3Enabled = true;
         /// <summary>Encounters keep happening during rails time warp (tier 2/3 drop you out of it).</summary>
         public static bool RailsWarpEncounters = true;
+        /// <summary>Tier 2/3 encounters drop you out of rails warp, and fields lock warp while they run.</summary>
+        public static bool WarpDropOut = true;
         /// <summary>Old debris is deleted after an altitude-based lifetime.</summary>
         public static bool DebrisDecayEnabled = true;
         /// <summary>Drifting specks around the ship during a debris field.</summary>
         public static bool FieldVisualsEnabled = true;
         /// <summary>Fading scorch marks where hits land.</summary>
-        public static bool ImpactMarksEnabled = true;
+        public static bool ImpactMarksEnabled = false;
+        /// <summary>On: periodic chance checks. Off: the older continuous per-hour rate.</summary>
+        public static bool ChanceEncounters = true;
 
         // --- Debris decay ---
         /// <summary>Lifetime (game hours) of debris with periapsis right at the top of the atmosphere.</summary>
@@ -83,13 +87,20 @@ namespace KesslerSymptoms
         public static double BreakSpike = 0.1;
 
         // --- Tiers (density thresholds) ---
-        public static double Tier1At = 2.0;
-        public static double Tier2At = 8.0;
-        public static double Tier3At = 20.0;
+        public static double Tier1At = 1.5;
+        public static double Tier2At = 9.0;
+        public static double Tier3At = 25.0;
 
         // --- Encounters ---
         /// <summary>Mean hits per game hour for each unit of band density.</summary>
         public static double HitsPerHourPerDensity = 10.0;
+        /// <summary>Chance mode: game seconds between encounter checks.</summary>
+        public static double ChanceCheckSeconds = 30.0;
+        /// <summary>Chance mode: per-check chance = ChanceBase + ChancePerDensity × density (tier 1+ only).</summary>
+        public static double ChanceBase = 0.02;
+        public static double ChancePerDensity = 0.01;
+        /// <summary>Chance an encounter is a lower tier than the band's, favouring the next tier down.</summary>
+        public static double LowerTierChance = 0.25;
         /// <summary>Real seconds after an impact alert (alarm + text) before another can play.</summary>
         public static double AlertCooldownSeconds = 30.0;
         public static double PingVolume = 1.0;
@@ -141,9 +152,15 @@ namespace KesslerSymptoms
             Bool("RailsWarpEncounters", "Encounters during time warp",
                 "Roll encounters in rails warp; tier 1 keeps warping, tier 2/3 drop you to 1x",
                 () => RailsWarpEncounters, v => RailsWarpEncounters = v),
+            Bool("WarpDropOut", "Encounters stop time warp",
+                "On: tier 2/3 drop you to 1x and fields lock warp. Off: they play out mid-warp (no pushes or panel breaks while on rails)",
+                () => WarpDropOut, v => WarpDropOut = v),
             Bool("DebrisDecayEnabled", "Debris decay",
                 "Delete old debris after a lifetime based on periapsis height (never on airless bodies)",
                 () => DebrisDecayEnabled, v => DebrisDecayEnabled = v),
+            Bool("ChanceEncounters", "Chance-based encounters",
+                "On: roll a chance every check interval. Off: the older continuous per-hour rate",
+                () => ChanceEncounters, v => ChanceEncounters = v),
             Bool("FieldVisualsEnabled", "Debris field visuals", "Specks drift past the ship during a field, denser at higher tiers",
                 () => FieldVisualsEnabled, v => FieldVisualsEnabled = v),
             Bool("ImpactMarksEnabled", "Impact marks", "Hits leave a scorch mark that fades out",
@@ -166,8 +183,20 @@ namespace KesslerSymptoms
                 () => Tier2At, v => Tier2At = v, 0, 1e6),
             Dbl("Tier3At", "Tier 3 at density", "Debris field: large impacts",
                 () => Tier3At, v => Tier3At = v, 0, 1e6),
+            Dbl("ChanceCheckSeconds", "Check interval (s)",
+                "Chance mode: game seconds between encounter checks",
+                () => ChanceCheckSeconds, v => ChanceCheckSeconds = v, 1, 3600),
+            Dbl("ChanceBase", "Base chance per check",
+                "Chance mode: chance (0-1) per check in any tier 1+ band, before density",
+                () => ChanceBase, v => ChanceBase = v, 0, 1),
+            Dbl("ChancePerDensity", "Chance per density",
+                "Chance mode: added to the per-check chance for each unit of band density",
+                () => ChancePerDensity, v => ChancePerDensity = v, 0, 1),
+            Dbl("LowerTierChance", "Lower-tier chance",
+                "Chance (0-1) an encounter is a lower tier than the band's, mostly the next tier down",
+                () => LowerTierChance, v => LowerTierChance = v, 0, 1),
             Dbl("HitsPerHourPerDensity", "Hits/hour per density",
-                "Average impacts per game hour = this x band density (off rails only)",
+                "Per-hour mode (chance-based encounters off): average encounters per game hour = this x density",
                 () => HitsPerHourPerDensity, v => HitsPerHourPerDensity = v, 0, 1e5),
             Dbl("AlertCooldownSeconds", "Alert cooldown (s)",
                 "Real seconds between impact alarms; hits in between still ping, just without the alarm",
@@ -237,7 +266,8 @@ namespace KesslerSymptoms
         {
             Group("Density & tiers", "DebrisWeightMultiplier", "ExplosionSpike", "ExplosionHalfLifeDays", "BreakSpike",
                 "Tier1At", "Tier2At", "Tier3At");
-            Group("Encounters", "HitsPerHourPerDensity", "AlertCooldownSeconds", "Tier2Impulse", "Tier3Impulse");
+            Group("Encounters", "ChanceCheckSeconds", "ChanceBase", "ChancePerDensity", "LowerTierChance",
+                "HitsPerHourPerDensity", "AlertCooldownSeconds", "Tier2Impulse", "Tier3Impulse");
             Group("Debris fields", "FieldChanceMax", "FieldHalfDensity", "FieldDurationMin", "FieldDurationMax",
                 "FieldSecondsPerHit", "FieldPeltsPerSecond");
             Group("Damage & leaks", "Tier2BreakChance", "Tier2PunctureChance", "LeakRateMinPctPerMin",
@@ -318,6 +348,32 @@ namespace KesslerSymptoms
         {
             if (density <= 0) return 0;
             return FieldChanceMax * density / (density + FieldHalfDensity);
+        }
+
+        /// <summary>Chance mode: chance (0-1) of an encounter per check at this density. Tier 0 bands: none.</summary>
+        public static double CheckChance(double density)
+        {
+            if (TierFor(density) < 1) return 0;
+            return Math.Min(1.0, ChanceBase + ChancePerDensity * density);
+        }
+
+        /// <summary>
+        /// Tier of an encounter in a band of <paramref name="bandTier"/>: usually the band's own,
+        /// with LowerTierChance of a lower one, weighted toward the next tier down (in a tier 3
+        /// band, tier 2 is twice as likely as tier 1).
+        /// </summary>
+        public static int PickEncounterTier(int bandTier)
+        {
+            if (bandTier <= 1 || UnityEngine.Random.value >= LowerTierChance) return bandTier;
+            // Weight tier k (1..bandTier-1) by k.
+            int total = bandTier * (bandTier - 1) / 2;
+            int roll = UnityEngine.Random.Range(0, total);
+            for (int k = bandTier - 1; k >= 1; k--)
+            {
+                if (roll < k) return k;
+                roll -= k;
+            }
+            return 1;
         }
 
         public static double ImpulseFor(int tier)

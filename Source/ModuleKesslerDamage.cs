@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using KSP.Localization;
 using UnityEngine;
@@ -43,6 +44,9 @@ namespace KesslerSymptoms
         public string leakStatus = "";
 
         private LeakFx fx;
+        /// <summary>This part's deployables and whether each was broken last frame, to catch new breaks.</summary>
+        private List<ModuleDeployablePart> deployables;
+        private bool[] wasBroken;
 
         public bool Leaking { get { return leaking; } }
 
@@ -77,6 +81,12 @@ namespace KesslerSymptoms
             {
                 Log.Warn("ModuleDeployablePart.repairKitsNecessary not found; repairs keep needing kits");
             }
+
+            // Already-broken parts (e.g. from the save) don't play a break sound on load.
+            deployables = part.FindModulesImplementing<ModuleDeployablePart>();
+            wasBroken = new bool[deployables.Count];
+            for (int i = 0; i < deployables.Count; i++)
+                wasBroken[i] = deployables[i].deployState == ModuleDeployablePart.DeployState.BROKEN;
             UpdateUI();
         }
 
@@ -170,7 +180,11 @@ namespace KesslerSymptoms
         /// </summary>
         public void Update()
         {
-            if (HighLogic.LoadedSceneIsFlight) UpdateRepairButtons();
+            if (HighLogic.LoadedSceneIsFlight)
+            {
+                UpdateRepairButtons();
+                CheckForNewBreaks();
+            }
 
             if (!leaking || !HighLogic.LoadedSceneIsFlight)
             {
@@ -215,6 +229,19 @@ namespace KesslerSymptoms
             return false;
         }
 
+        /// <summary>Play the break sound for any deployable that broke since last frame, whatever broke it.</summary>
+        private void CheckForNewBreaks()
+        {
+            if (deployables == null) return;
+            for (int i = 0; i < deployables.Count; i++)
+            {
+                bool broken = deployables[i].deployState == ModuleDeployablePart.DeployState.BROKEN;
+                if (broken && !wasBroken[i])
+                    Sfx.PlayBreak(part, deployables[i] is ModuleDeployableSolarPanel);
+                wasBroken[i] = broken;
+            }
+        }
+
         private void UpdateRepairButtons()
         {
             bool anyBroken = false;
@@ -251,7 +278,9 @@ namespace KesslerSymptoms
             externalToEVAOnly = true, unfocusedRange = 4f, active = false)]
         public void PatchLeak()
         {
-            if (!EvaCanRepair()) return;
+            // Any kerbal on EVA can slap a patch on a leak; no Engineer needed (unlike panel repair).
+            Vessel eva = FlightGlobals.ActiveVessel;
+            if (eva == null || !eva.isEVA) return;
 
             FixedUpdate(); // settle the drain up to now first
             if (!leaking) return;
