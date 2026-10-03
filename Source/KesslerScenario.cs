@@ -132,6 +132,32 @@ namespace KesslerSymptoms
             });
         }
 
+        /// <summary>
+        /// Take up to <paramref name="amount"/> of current spike value out of the spikes lying
+        /// in [inner, outer) around a body, newest first. Pass PositiveInfinity to clear them.
+        /// </summary>
+        public void ReduceSpikes(CelestialBody body, double inner, double outer, double amount)
+        {
+            double now = Planetarium.GetUniversalTime();
+            double halfLife = Settings.ExplosionHalfLifeDays * KSPUtil.dateTimeFormatter.Day;
+            for (int i = spikes.Count - 1; i >= 0 && amount > 0; i--)
+            {
+                ExplosionSpike s = spikes[i];
+                if (s.BodyName != body.bodyName || s.Radius < inner || s.Radius >= outer) continue;
+
+                double value = s.ValueAt(now, halfLife);
+                if (value <= amount)
+                {
+                    spikes.RemoveAt(i);
+                }
+                else
+                {
+                    s.Magnitude *= (value - amount) / value;
+                }
+                amount -= value;
+            }
+        }
+
         private void OnPartDie(Part p)
         {
             Vessel v = p != null ? p.vessel : null;

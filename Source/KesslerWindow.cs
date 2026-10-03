@@ -45,6 +45,7 @@ namespace KesslerSymptoms
         private readonly Dictionary<string, string> edits = new Dictionary<string, string>();
         private Vector2 settingsScroll;
         private string status = "";
+        private string hoverHelp = "";
 
         // Styles are built from HighLogic.Skin on first OnGUI (they can't be made outside it).
         private GUIStyle headerStyle, cellStyle, badFieldStyle, changedLabelStyle, helpStyle;
@@ -196,9 +197,19 @@ namespace KesslerSymptoms
             spikeBand = Mathf.Clamp(spikeBand, 0, set.Count - 1);
             GUILayout.Label(spikeBand.ToString(), GUILayout.Width(25));
             if (GUILayout.Button("+", GUILayout.Width(25))) spikeBand = Mathf.Min(set.Count - 1, spikeBand + 1);
-            if (GUILayout.Button("Add spike (" + Settings.ExplosionSpike + ")"))
+            if (GUILayout.Button("+" + Settings.ExplosionSpike))
             {
                 scn.AddSpike(body, (set.Inner[spikeBand] + set.Outer[spikeBand]) / 2, Settings.ExplosionSpike);
+                scn.Rescan();
+            }
+            if (GUILayout.Button("-" + Settings.ExplosionSpike))
+            {
+                scn.ReduceSpikes(body, set.Inner[spikeBand], set.Outer[spikeBand], Settings.ExplosionSpike);
+                scn.Rescan();
+            }
+            if (GUILayout.Button("Reset band"))
+            {
+                scn.ReduceSpikes(body, set.Inner[spikeBand], set.Outer[spikeBand], double.PositiveInfinity);
                 scn.Rescan();
             }
             GUILayout.EndHorizontal();
@@ -230,8 +241,12 @@ namespace KesslerSymptoms
             }
             GUILayout.EndScrollView();
 
-            // Hovered row's help text.
-            GUILayout.Label(string.IsNullOrEmpty(GUI.tooltip) ? " " : GUI.tooltip, helpStyle);
+            // Hovered row's help text. GUI.tooltip is only filled in during Repaint, so showing it
+            // directly would make the Layout and Repaint passes disagree about this label's size
+            // (it got squeezed into a one-letter-wide column). Latch it on Repaint and show it from
+            // the next frame on, in a fixed-height box.
+            GUILayout.Label(hoverHelp, helpStyle, GUILayout.Height(40), GUILayout.ExpandWidth(true));
+            if (Event.current.type == EventType.Repaint) hoverHelp = GUI.tooltip;
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button(new GUIContent("Apply", "Use these values now, without saving")))
