@@ -117,7 +117,7 @@ namespace KesslerSymptoms
                     firstSeen[v.persistentId] = now;
                 }
                 if (Settings.DebrisDecayEnabled && CanDelete(v) &&
-                    now - seen > Decay.LifetimeSeconds(o.referenceBody, o.PeR) * Decay.RandomFactor(v.persistentId))
+                    now - seen > Decay.LifetimeFor(o.referenceBody, o.PeR, v.persistentId))
                 {
                     expired.Add(v);
                     continue;

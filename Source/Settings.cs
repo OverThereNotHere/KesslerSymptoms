@@ -55,10 +55,15 @@ namespace KesslerSymptoms
         public static bool ChanceEncounters = true;
 
         // --- Debris decay ---
-        /// <summary>Lifetime (game hours) of debris with periapsis right at the top of the atmosphere.</summary>
-        public static double DecayBaseHours = 120.0;
-        /// <summary>Lifetime multiplies by e for every (this × atmosphere depth) of periapsis height.</summary>
-        public static double DecayScaleHeightFraction = 0.06;
+        /// <summary>Lifetime (calendar months) of debris with periapsis at the bottom of the band shell.</summary>
+        public static double DecayMinMonths = 2.0;
+        /// <summary>Lifetime (calendar years) of debris with periapsis at the top of the shell (SOI edge).</summary>
+        public static double DecayMaxYears = 200.0;
+        /// <summary>
+        /// Curve shape, in body radii: lifetime climbs with log(1 + height / (this × radius)).
+        /// Smaller = lifetimes climb sooner above the floor; larger = low orbits stay short-lived longer.
+        /// </summary>
+        public static double DecayCurveRadii = 0.01;
         /// <summary>Per-debris spread: lifetime × e^(±this), fixed for each piece.</summary>
         public static double DecayRandomness = 0.5;
 
@@ -189,7 +194,7 @@ namespace KesslerSymptoms
                 "On: tier 2/3 drop you to 1x and fields lock warp. Off: they play out mid-warp (no pushes or panel breaks while on rails)",
                 () => WarpDropOut, v => WarpDropOut = v),
             Bool("DebrisDecayEnabled", "Debris decay",
-                "Delete old debris after a lifetime based on periapsis height (never on airless bodies)",
+                "Delete old debris after a lifetime based on periapsis height (a month low down, up to 200 years at the SOI edge)",
                 () => DebrisDecayEnabled, v => DebrisDecayEnabled = v),
             Bool("ChanceEncounters", "Chance-based encounters",
                 "On: roll a chance every check interval. Off: the older continuous per-hour rate",
@@ -321,12 +326,15 @@ namespace KesslerSymptoms
                 () => FieldPeltsPerSecond, v => FieldPeltsPerSecond = v, 0, 50),
             Dbl("PeltVolume", "Pelt volume", "Micro pelt volume as a fraction of impact volume",
                 () => PeltVolume, v => PeltVolume = v, 0, 2),
-            Dbl("DecayBaseHours", "Decay base (hours)",
-                "Game hours debris lasts with periapsis at the top of the atmosphere",
-                () => DecayBaseHours, v => DecayBaseHours = v, 0.01, 1e9),
-            Dbl("DecayScaleHeightFraction", "Decay scale height",
-                "Lifetime x e for every (this x atmosphere depth) of periapsis height",
-                () => DecayScaleHeightFraction, v => DecayScaleHeightFraction = v, 0.001, 10),
+            Dbl("DecayMinMonths", "Shortest lifetime (months)",
+                "Calendar months debris lasts with periapsis just above the atmosphere (or surface)",
+                () => DecayMinMonths, v => DecayMinMonths = v, 0.01, 1e6),
+            Dbl("DecayMaxYears", "Longest lifetime (years)",
+                "Calendar years debris lasts with periapsis at the edge of the SOI",
+                () => DecayMaxYears, v => DecayMaxYears = v, 0.01, 1e6),
+            Dbl("DecayCurveRadii", "Lifetime curve (radii)",
+                "Curve shape in body radii; smaller = lifetimes climb sooner above the floor",
+                () => DecayCurveRadii, v => DecayCurveRadii = v, 0.001, 100),
             Dbl("DecayRandomness", "Decay randomness", "Each piece's lifetime is scaled by e^(+/- this)",
                 () => DecayRandomness, v => DecayRandomness = v, 0, 5),
             Dbl("MarkFadeSeconds", "Impact mark fade (s)", "Seconds an impact mark takes to fade away",
@@ -361,7 +369,7 @@ namespace KesslerSymptoms
                 "Tier3LeakRateMaxPctPerMin", "BatteryShortChance", "BatteryShortCapacityLoss", "FuelCellChance",
                 "RcsChance", "EngineChance", "GeneratorChance", "FixedSolarChance", "OutputLossPerHit", "OutputFloor",
                 "SasChance", "SignalLossChance", "SignalLossMinSeconds", "SignalLossMaxSeconds");
-            Group("Debris decay", "DecayBaseHours", "DecayScaleHeightFraction", "DecayRandomness");
+            Group("Debris decay", "DecayMinMonths", "DecayMaxYears", "DecayCurveRadii", "DecayRandomness");
             Group("Audio & visuals", "PingVolume", "AlarmVolume", "PeltVolume", "MarkFadeSeconds");
             Group("Bands & scanning", "ScanIntervalSeconds", "BandsPerBody", "CeilingRadii", "BandGrowth");
         }
